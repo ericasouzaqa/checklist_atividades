@@ -1,0 +1,16 @@
+{
+  "name": "checklist-diario-widget",
+  "version": "1.0.0",
+  "description": "Widget de checklist diário estilo sticky note",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "package-win": "electron-packager . ChecklistDiario --platform=win32 --arch=x64 --out=dist --overwrite --app-version=1.0.0"
+  },
+  "author": "Erica",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^31.0.0",
+    "electron-packager": "^17.1.2"
+  }
+}
