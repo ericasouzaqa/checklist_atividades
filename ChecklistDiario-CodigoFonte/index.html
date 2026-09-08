@@ -1,73 +1,139 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="pt-BR">
-<head>
-<meta charset="UTF-8">
-<title>Checklist Diário</title>
-<link rel="stylesheet" href="style.css">
-</head>
-<body>
-
-  <div id="titlebar">
-    <div id="titlebar-drag">
-      <span id="titlebar-label">📝 Checklist Diário</span>
-    </div>
-    <div id="titlebar-controls">
-      <button id="pinBtn" class="tb-btn" title="Fixar por cima das outras janelas">📌</button>
-      <button id="paletteBtn" class="tb-btn" title="Personalizar cor">🎨</button>
-      <button id="minBtn" class="tb-btn" title="Minimizar">🗕</button>
-      <button id="maxBtn" class="tb-btn" title="Maximizar / Restaurar">🗖</button>
-    </div>
-  </div>
-
-  <div id="content">
-    <div id="dateLabel"></div>
-
-    <div id="progressBarBg"><div id="progressBarFill"></div></div>
-
-    <div id="list"></div>
-
-    <div id="addRow">
-      <input type="text" id="newItemInput" placeholder="Nova atividade...">
-      <button id="addBtn">+</button>
-    </div>
-
-    <div id="footerRow">
-      <button class="link-btn" id="resetBtn">Desmarcar tudo</button>
-      <button class="link-btn" id="clearBtn">Limpar lista</button>
-    </div>
-  </div>
-
-  <!-- Painel de cor: roda de cores completa -->
-  <div id="colorPanel" class="hidden">
-    <div id="colorPanelHeader">
-      <span>Personalizar cor</span>
-      <button id="closeColorBtn" class="tb-btn">✕</button>
-    </div>
-
-    <canvas id="wheel" width="160" height="160"></canvas>
-    <div id="wheelCursor"></div>
-
-    <label class="slider-label">Brilho</label>
-    <input type="range" id="brightnessSlider" min="0" max="100" value="100">
-
-    <div id="colorFields">
-      <label>HEX</label>
-      <input type="text" id="hexInput" maxlength="7">
-      <label>R</label><input type="number" id="rInput" min="0" max="255">
-      <label>G</label><input type="number" id="gInput" min="0" max="255">
-      <label>B</label><input type="number" id="bInput" min="0" max="255">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Checklist Diário</title>
+    <link rel="stylesheet" href="style.css" />
+    <style>
+      /* Pequeno ajuste para alinhar o calendário e o botão no design existente */
+      .date-container {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 10px;
+        gap: 10px;
+      }
+      #seletor-data {
+        border: none;
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-weight: bold;
+        background: rgba(255, 255, 255, 0.5);
+        font-family: Arial, sans-serif;
+        font-size: 13px;
+        color: #333;
+        cursor: pointer;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="titlebar">
+      <div id="titlebar-drag">
+        <span id="titlebar-label">📝 Checklist Diário</span>
+      </div>
+      <div id="titlebar-controls">
+        <button
+          id="pinBtn"
+          class="tb-btn"
+          title="Fixar por cima das outras janelas"
+        >
+          📌
+        </button>
+        <button id="paletteBtn" class="tb-btn" title="Personalizar cor">
+          🎨
+        </button>
+        <button id="minBtn" class="tb-btn" title="Minimizar">🗕</button>
+        <button id="maxBtn" class="tb-btn" title="Maximizar / Restaurar">
+          🗖
+        </button>
+      </div>
     </div>
 
-    <div id="presetRow">
-      <button class="swatch" data-color="#FFF3B0" style="background:#FFF3B0"></button>
-      <button class="swatch" data-color="#FFD6E8" style="background:#FFD6E8"></button>
-      <button class="swatch" data-color="#C9F2C7" style="background:#C9F2C7"></button>
-      <button class="swatch" data-color="#BFE3FF" style="background:#BFE3FF"></button>
-      <button class="swatch" data-color="#E5D4FF" style="background:#E5D4FF"></button>
-      <button class="swatch" data-color="#FFFFFF" style="background:#FFFFFF"></button>
-    </div>
-  </div>
+    <div id="content">
+      <!-- Container ajustado para exibir o dia da semana à esquerda e o calendário interativo à direita -->
+      <div class="date-container">
+        <div id="dateLabel"></div>
+        <input type="date" id="seletor-data" />
+      </div>
 
-<script src="renderer.js"></script>
-</body>
+      <div id="progressBarBg"><div id="progressBarFill"></div></div>
+
+      <div id="list"></div>
+
+      <div id="addRow">
+        <input type="text" id="newItemInput" placeholder="Nova atividade..." />
+        <button id="addBtn">+</button>
+      </div>
+
+      <div id="footerRow">
+        <button class="link-btn" id="resetBtn">Desmarcar tudo</button>
+        <button class="link-btn" id="clearBtn">Limpar lista</button>
+        <!-- Novo botão de exportação estilizado com as suas classes de link nativas -->
+        <button
+          class="link-btn"
+          id="exportBtn"
+          style="font-weight: bold; color: #2e7d32"
+        >
+          Exportar Planilha
+        </button>
+      </div>
+    </div>
+
+    <!-- Painel de cor: roda de cores completa -->
+    <div id="colorPanel" class="hidden">
+      <div id="colorPanelHeader">
+        <span>Personalizar cor</span>
+        <button id="closeColorBtn" class="tb-btn">✕</button>
+      </div>
+
+      <canvas id="wheel" width="160" height="160"></canvas>
+      <div id="wheelCursor"></div>
+
+      <label class="slider-label">Brilho</label>
+      <input type="range" id="brightnessSlider" min="0" max="100" value="100" />
+
+      <div id="colorFields">
+        <label>HEX</label>
+        <input type="text" id="hexInput" maxlength="7" />
+        <label>R</label><input type="number" id="rInput" min="0" max="255" />
+        <label>G</label><input type="number" id="gInput" min="0" max="255" />
+        <label>B</label><input type="number" id="bInput" min="0" max="255" />
+      </div>
+
+      <div id="presetRow">
+        <button
+          class="swatch"
+          data-color="#FFF3B0"
+          style="background: #fff3b0"
+        ></button>
+        <button
+          class="swatch"
+          data-color="#FFD6E8"
+          style="background: #ffd6e8"
+        ></button>
+        <button
+          class="swatch"
+          data-color="#C9F2C7"
+          style="background: #c9f2c7"
+        ></button>
+        <button
+          class="swatch"
+          data-color="#BFE3FF"
+          style="background: #bfe3ff"
+        ></button>
+        <button
+          class="swatch"
+          data-color="#E5D4FF"
+          style="background: #e5d4ff"
+        ></button>
+        <button
+          class="swatch"
+          data-color="#FFFFFF"
+          style="background: #ffffff"
+        ></button>
+      </div>
+    </div>
+
+    <script src="renderer.js"></script>
+  </body>
 </html>

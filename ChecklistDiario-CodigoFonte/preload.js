@@ -6,5 +6,6 @@ contextBridge.exposeInMainWorld('api', {
   togglePin: (pinned) => ipcRenderer.invoke('toggle-pin', pinned),
   isPinned: () => ipcRenderer.invoke('is-pinned'),
   toggleMaximize: () => ipcRenderer.invoke('maximize-toggle'),
-  minimize: () => ipcRenderer.invoke('minimize')
+  minimize: () => ipcRenderer.invoke('minimize'),
+  exportCsv: (csvContent) => ipcRenderer.invoke('export-csv', csvContent), // 👈 linha nv
 });

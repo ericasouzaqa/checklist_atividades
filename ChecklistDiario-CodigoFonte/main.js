@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, Menu, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -20,14 +20,18 @@ function createWindow() {
     alwaysOnTop: false,
     title: 'Checklist Diário',
     backgroundColor: '#FFF3B0',
+    icon: path.join(__dirname, 'icon.ico'), // 📌 Vincula o novo ícone do aplicativo
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
-      nodeIntegration: false
-    }
+      nodeIntegration: false,
+    },
   });
 
   win.loadFile('index.html');
+
+  // ✂️ Remove as barras de menu tradicionais que não fazem sentido (File, Edit, etc)
+  Menu.setApplicationMenu(null);
 }
 
 app.whenReady().then(() => {
@@ -65,13 +69,14 @@ ipcMain.handle('minimize', () => {
   win.minimize();
 });
 
-// --- IPC: dados (persistidos em arquivo, fora do app) ---
+// --- IPC: dados (persistidos em arquivo por data) ---
 ipcMain.handle('load-data', () => {
   try {
     const raw = fs.readFileSync(getDataFile(), 'utf-8');
     return JSON.parse(raw);
   } catch (e) {
-    return null;
+    // Retorna um objeto vazio estruturado se o arquivo não existir
+    return {};
   }
 });
 
@@ -82,4 +87,24 @@ ipcMain.handle('save-data', (event, data) => {
   } catch (e) {
     return false;
   }
+});
+
+// --- IPC: Exportar para Planilha (CSV) ---
+ipcMain.handle('export-csv', async (event, csvContent) => {
+  const { filePath } = await dialog.showSaveDialog(win, {
+    title: 'Exportar Tarefas',
+    defaultPath: path.join(app.getPath('downloads'), 'Checklist_Tarefas.csv'),
+    filters: [{ name: 'Arquivos CSV (*.csv)', extensions: ['csv'] }],
+  });
+
+  if (filePath) {
+    try {
+      // \ufeff força o Excel no Windows a abrir o arquivo com acentuação correta em PT-BR
+      fs.writeFileSync(filePath, '\ufeff' + csvContent, 'utf-8');
+      return { success: true };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  }
+  return { success: false };
 });

@@ -11,6 +11,7 @@
   "license": "MIT",
   "devDependencies": {
     "electron": "^31.0.0",
+    "electron-installer-windows": "^3.0.0",
     "electron-packager": "^17.1.2"
   }
 }
