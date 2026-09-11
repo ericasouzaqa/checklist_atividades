@@ -47,6 +47,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   applyColorAndTexture(corSalva, texturaSalva, false);
   const labelNome = document.getElementById('titlebar-label');
   if (labelNome) {
+    labelNome.setAttribute('contenteditable', 'true');
     if (bancoDadosGeral._nomeUsuario) {
       labelNome.textContent = bancoDadosGeral._nomeUsuario;
     }
@@ -477,7 +478,8 @@ function render() {
       const del = document.createElement('button');
       del.className = 'del-btn';
       del.textContent = '✕';
-      del.addEventListener('click', () => {
+      del.addEventListener('click', (e) => {
+        e.stopPropagation();
         abrirCaixaConfirmacaoCustomizada(
           `Remover a tarefa "${item.text}"?`,
           () => {
@@ -788,10 +790,15 @@ function setupExportLogic() {
   }
 
   const xlsxBtn = document.getElementById('btnExportarXLSX');
+
   if (xlsxBtn) {
     xlsxBtn.addEventListener('click', async () => {
-      const { líneas, abaNome } = obterDadosFiltrados();
-      if (expModal) expModal.classList.remove('open');
+      const { linhas, abaNome } = obterDadosFiltrados();
+
+      if (expModal) {
+        expModal.classList.remove('open');
+      }
+
       await window.api.exportXlsx({
         linhas,
         abaNome: abaNome.substring(0, 31),
