@@ -1,7 +1,7 @@
-let bancoDadosGeral = null; // LAZY LOADING: Inicializado como nulo para carga sob demanda
+let bancoDadosGeral = null;
 let dataAtualSelecionada = '';
 let acaoConfirmacaoPendente = null;
-let inicializandoSistema = true; // TRAVA DE STARTUP: Impede múltiplos renders e persist() em cascata
+let inicializandoSistema = true;
 
 window.addEventListener('DOMContentLoaded', async () => {
   const hoje = new Date();
@@ -17,16 +17,14 @@ window.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('exportDe').value = dataAtualSelecionada;
   document.getElementById('exportAte').value = dataAtualSelecionada;
 
-  // LEITURA ÚNICA E ISOLADA: Sem loops ou checagens redundantes de disco no startup
   const loaded = await window.api.loadData();
 
-  // Bloqueio de Inicialização Limpa se houver flag de erro de integridade do Processo Main
   if (loaded && loaded._erroCriticoIntegridade) {
     alert(
       'AVISO CRÍTICO:\nO arquivo de dados foi corrompido e isolado para sua segurança.\nPara evitar a perda do seu histórico, feche o aplicativo e contate o suporte antes de realizar qualquer alteração.'
     );
-    bancoDadosGeral = {}; // Inicia em modo de leitura seguro sem disparar loops destrutivos
-    inicializandoSistema = true; // Trava permanentemente o autosave reverso
+    bancoDadosGeral = {};
+    inicializandoSistema = true;
     return;
   }
 
@@ -41,10 +39,10 @@ window.addEventListener('DOMContentLoaded', async () => {
     bancoDadosGeral = {};
   }
 
-  // SPRINT 3: Garante o resgate de cor padrão no startup
   const corSalva = bancoDadosGeral._configCorGlobal?.color || '#FFF3B0';
   const texturaSalva = bancoDadosGeral._configCorGlobal?.texture || 'none';
   applyColorAndTexture(corSalva, texturaSalva, false);
+
   const labelNome = document.getElementById('titlebar-label');
   if (labelNome) {
     labelNome.setAttribute('contenteditable', 'true');
@@ -53,7 +51,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     }
     labelNome.addEventListener('blur', () => {
       bancoDadosGeral._nomeUsuario =
-        labelNome.textContent.trim() || 'Checklist Diário da Erica';
+        labelNome.textContent.trim() || 'Checklist Diário';
       persist();
     });
     labelNome.addEventListener('keydown', (e) => {
@@ -96,6 +94,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   setupTitlebar();
   setupChecklistControls();
   setupExportLogic();
+  setupFiltrosGlobais();
 
   if (window.api && typeof window.api.onCloseRequested === 'function') {
     window.api.onCloseRequested(async () => {
@@ -117,6 +116,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   inicializandoSistema = false;
   atualizarInterfacePorData();
 });
+
 function setupModalEvents() {
   const overlay = document.getElementById('modalOverlay');
   const openBtn = document.getElementById('paletteBtn');
@@ -127,18 +127,28 @@ function setupModalEvents() {
   const slider = document.getElementById('brightnessSlider');
 
   if (openBtn && overlay) {
-    openBtn.addEventListener('click', () => {
+    openBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      overlay.classList.remove('hidden');
       overlay.classList.add('open');
     });
   }
 
-  [closeX, closeBtn].forEach((b) => {
-    if (b && overlay) {
-      b.addEventListener('click', () => {
-        overlay.classList.remove('open');
-      });
-    }
-  });
+  if (closeX && overlay) {
+    closeX.addEventListener('click', (e) => {
+      e.stopPropagation();
+      overlay.classList.add('hidden');
+      overlay.classList.remove('open');
+    });
+  }
+
+  if (closeBtn && overlay) {
+    closeBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      overlay.classList.add('hidden');
+      overlay.classList.remove('open');
+    });
+  }
 
   const corModoGlobal = document.getElementById('corModoGlobal');
   const corModoLocal = document.getElementById('corModoLocal');
@@ -213,15 +223,19 @@ function setupConfirmModalEvents() {
   const btnNo = document.getElementById('confirmNo');
 
   if (btnNo && overlay) {
-    btnNo.addEventListener('click', () => {
+    btnNo.addEventListener('click', (e) => {
+      e.stopPropagation();
       overlay.classList.remove('open');
+      overlay.classList.add('hidden');
       acaoConfirmacaoPendente = null;
     });
   }
 
   if (btnYes && overlay) {
-    btnYes.addEventListener('click', () => {
+    btnYes.addEventListener('click', (e) => {
+      e.stopPropagation();
       overlay.classList.remove('open');
+      overlay.classList.add('hidden');
       if (typeof acaoConfirmacaoPendente === 'function') {
         acaoConfirmacaoPendente();
       }
@@ -231,13 +245,56 @@ function setupConfirmModalEvents() {
 }
 
 function abrirCaixaConfirmacaoCustomizada(mensagem, acaoAprovada) {
-  document.getElementById('confirmMessage').textContent = mensagem;
+  const msgEl = document.getElementById('confirmMessage');
+  if (msgEl) msgEl.textContent = mensagem;
   acaoConfirmacaoPendente = acaoAprovada;
-  document.getElementById('confirmOverlay').classList.add('open');
+  const overlay = document.getElementById('confirmOverlay');
+  if (overlay) {
+    overlay.classList.remove('hidden');
+    overlay.classList.add('open');
+  }
 }
+
+// Filtro principal (Hoje/Semana/Mês/Ano/Período) e campos de intervalo
+// não tinham listener nenhum: trocar a visão não atualizava a lista sozinho.
+function setupFiltrosGlobais() {
+  const mainFilterSelect = document.getElementById('mainFilterSelect');
+  if (mainFilterSelect) {
+    mainFilterSelect.addEventListener('change', () => {
+      render();
+    });
+  }
+
+  const periodoDe = document.getElementById('periodoDe');
+  const periodoAte = document.getElementById('periodoAte');
+  if (periodoDe) periodoDe.addEventListener('change', () => render());
+  if (periodoAte) periodoAte.addEventListener('change', () => render());
+
+  const btnClearFilter = document.getElementById('btnClearFilter');
+  if (btnClearFilter) {
+    btnClearFilter.addEventListener('click', () => {
+      const hoje = new Date();
+      const hojeStr =
+        hoje.getFullYear() +
+        '-' +
+        String(hoje.getMonth() + 1).padStart(2, '0') +
+        '-' +
+        String(hoje.getDate()).padStart(2, '0');
+
+      if (mainFilterSelect) mainFilterSelect.value = 'hoje';
+      dataAtualSelecionada = hojeStr;
+
+      const seletor = document.getElementById('seletor-data');
+      if (seletor) seletor.value = hojeStr;
+
+      atualizarInterfacePorData();
+    });
+  }
+}
+
 function atualizarInterfacePorData() {
-  document.getElementById('dateLabel').textContent =
-    formatDate(dataAtualSelecionada);
+  const dateLabel = document.getElementById('dateLabel');
+  if (dateLabel) dateLabel.textContent = formatDate(dataAtualSelecionada);
 
   if (!bancoDadosGeral[dataAtualSelecionada]) {
     const corPadrao =
@@ -305,11 +362,22 @@ function atualizarInterfacePorData() {
     if (dropdownTextTextures)
       dropdownTextTextures.value = diaDados.texture || 'none';
 
+    persist();
+    render();
+  } else {
+    const diaDados = bancoDadosGeral[dataAtualSelecionada];
+    applyColorAndTexture(diaDados.color, diaDados.texture || 'none', false);
+
+    const inputCor = document.getElementById('inputCorNativa');
+    const dropdownTextTextures = document.getElementById('dropdownTexturas');
+    if (inputCor) inputCor.value = diaDados.color;
+    if (dropdownTextTextures)
+      dropdownTextTextures.value = diaDados.texture || 'none';
+
     render();
   }
 }
 
-// CORREÇÃO DO REFERENCEERROR: Função de escopo global devidamente limpa e isolada
 function sincRegrasModoCor() {
   const rLocal = document.getElementById('corModoLocal');
   const rPeriodo = document.getElementById('corModoPeriodo');
@@ -367,24 +435,19 @@ async function persist() {
   if (inicializandoSistema) return;
   await window.api.saveData(bancoDadosGeral);
 }
-function render() {
-  const list = document.getElementById('list');
-  list.innerHTML = '';
 
+// Reaproveitada pelo render() (visão da tela) e pela exportação (CSV/XLSX),
+// para que ambos sempre respeitem exatamente o mesmo filtro ativo.
+function obterChavesPorFiltro() {
   const mainFilter =
     document.getElementById('mainFilterSelect')?.value || 'hoje';
-  let chavesParaRenderizar = [];
-
   const hojeStr = dataAtualSelecionada;
   const dataRef = new Date(hojeStr + 'T00:00:00');
+  let chaves = [];
 
   if (mainFilter === 'hoje') {
-    chavesParaRenderizar = [hojeStr];
-    const cc = document.getElementById('containerCamposPeriodo');
-    if (cc) cc.style.display = 'none';
+    chaves = [hojeStr];
   } else if (mainFilter === 'semana') {
-    const cc = document.getElementById('containerCamposPeriodo');
-    if (cc) cc.style.display = 'none';
     const diaSemana = dataRef.getDay();
     const inicioSemana = new Date(dataRef);
     inicioSemana.setDate(dataRef.getDate() - diaSemana);
@@ -395,32 +458,38 @@ function render() {
         String(inicioSemana.getMonth() + 1).padStart(2, '0') +
         '-' +
         String(inicioSemana.getDate()).padStart(2, '0');
-      chavesParaRenderizar.push(dStr);
+      chaves.push(dStr);
       inicioSemana.setDate(inicioSemana.getDate() + 1);
     }
   } else if (mainFilter === 'mes') {
-    const cc = document.getElementById('containerCamposPeriodo');
-    if (cc) cc.style.display = 'none';
     const prefixoMes = hojeStr.substring(0, 7);
-    chavesParaRenderizar = Object.keys(bancoDadosGeral).filter((k) =>
+    chaves = Object.keys(bancoDadosGeral).filter((k) =>
       k.startsWith(prefixoMes)
     );
   } else if (mainFilter === 'ano') {
-    const cc = document.getElementById('containerCamposPeriodo');
-    if (cc) cc.style.display = 'none';
     const prefixoAno = hojeStr.substring(0, 4);
-    chavesParaRenderizar = Object.keys(bancoDadosGeral).filter((k) =>
+    chaves = Object.keys(bancoDadosGeral).filter((k) =>
       k.startsWith(prefixoAno)
     );
   } else if (mainFilter === 'periodo') {
-    const cc = document.getElementById('containerCamposPeriodo');
-    if (cc) cc.style.display = 'flex';
     const de = document.getElementById('periodoDe')?.value;
     const ate = document.getElementById('periodoAte')?.value;
-    chavesParaRenderizar = Object.keys(bancoDadosGeral).filter(
-      (k) => k >= de && k <= ate
-    );
+    chaves = Object.keys(bancoDadosGeral).filter((k) => k >= de && k <= ate);
   }
+
+  return { mainFilter, chaves };
+}
+
+function render() {
+  const list = document.getElementById('list');
+  if (!list) return;
+  list.innerHTML = '';
+
+  const { mainFilter, chaves: chavesParaRenderizar } = obterChavesPorFiltro();
+  const hojeStr = dataAtualSelecionada;
+
+  const cc = document.getElementById('containerCamposPeriodo');
+  if (cc) cc.style.display = mainFilter === 'periodo' ? 'flex' : 'none';
 
   const fragment = document.createDocumentFragment();
   chavesParaRenderizar.sort().forEach((chaveData) => {
@@ -439,7 +508,6 @@ function render() {
       const row = document.createElement('div');
       row.className = 'item' + (item.done ? ' done' : '');
 
-      // --- CONFIGURAÇÃO DRAG & DROP (SPRINT 3A) ---
       if (mainFilter === 'hoje') {
         row.draggable = true;
         row.dataset.indexReal = idxReal;
@@ -471,13 +539,16 @@ function render() {
       const editBtn = document.createElement('button');
       editBtn.className = 'edit-btn';
       editBtn.innerHTML = '✏️';
-      editBtn.addEventListener('click', () =>
-        abrirModalEdicaoTarefa(chaveData, idxReal)
-      );
+      editBtn.style.webkitAppRegion = 'no-drag';
+      editBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        abrirModalEdicaoTarefa(chaveData, idxReal);
+      });
 
       const del = document.createElement('button');
       del.className = 'del-btn';
       del.textContent = '✕';
+      del.style.webkitAppRegion = 'no-drag';
       del.addEventListener('click', (e) => {
         e.stopPropagation();
         abrirCaixaConfirmacaoCustomizada(
@@ -505,8 +576,6 @@ function render() {
   });
 
   list.appendChild(fragment);
-
-  // --- ESCUTAS E PROCESSAMENTO DO CONTAINER DO DROP ---
   if (mainFilter === 'hoje') {
     const novaLista = list.cloneNode(false);
     while (list.firstChild) novaLista.appendChild(list.firstChild);
@@ -584,6 +653,7 @@ function render() {
         : 'SELECIONAR TUDO';
   }
 }
+
 function setupChecklistControls() {
   const input = document.getElementById('newItemInput');
   const add = () => {
@@ -696,141 +766,6 @@ function setupChecklistControls() {
     });
   }
 }
-function setupExportLogic() {
-  const expModal = document.getElementById('exportModalOverlay');
-  const btnAbrir = document.getElementById('openExportModalBtn');
-  const btnFecharX = document.getElementById('closeExportModalX');
-
-  if (btnAbrir)
-    btnAbrir.addEventListener('click', () => {
-      expModal.classList.add('open');
-    });
-  if (btnFecharX)
-    btnFecharX.addEventListener('click', () => {
-      expModal.classList.remove('open');
-    });
-
-  function obterDadosFiltrados() {
-    const filterAtivo =
-      document.getElementById('mainFilterSelect')?.value || 'hoje';
-    let chavesFiltradas = Object.keys(bancoDadosGeral).filter(
-      (k) => !k.startsWith('_')
-    );
-    let abaNome = 'Checklist Geral';
-    const hojeStr = dataAtualSelecionada;
-    const dataRef = new Date(hojeStr + 'T00:00:00');
-
-    if (filterAtivo === 'hoje') {
-      chavesFiltradas = chavesFiltradas.filter((k) => k === hojeStr);
-      abaNome = `Hoje_${hojeStr}`;
-    } else if (filterAtivo === 'semana') {
-      const diaSemana = dataRef.getDay();
-      const inicioSemana = new Date(dataRef);
-      inicioSemana.setDate(dataRef.getDate() - diaSemana);
-      const diasSem = [];
-      for (let i = 0; i < 7; i++) {
-        diasSem.push(
-          inicioSemana.getFullYear() +
-            '-' +
-            String(inicioSemana.getMonth() + 1).padStart(2, '0') +
-            '-' +
-            String(inicioSemana.getDate()).padStart(2, '0')
-        );
-        inicioSemana.setDate(inicioSemana.getDate() + 1);
-      }
-      chavesFiltradas = chavesFiltradas.filter((k) => diasSem.includes(k));
-      abaNome = 'Semana_Atual';
-    } else if (filterAtivo === 'mes') {
-      const prefixoMes = hojeStr.substring(0, 7);
-      chavesFiltradas = chavesFiltradas.filter((k) => k.startsWith(prefixoMes));
-      abaNome = `Mes_${prefixoMes}`;
-    } else if (filterAtivo === 'ano') {
-      const prefixoAno = hojeStr.substring(0, 4);
-      chavesFiltradas = chavesFiltradas.filter((k) => k.startsWith(prefixoAno));
-      abaNome = `Ano_${prefixoAno}`;
-    } else if (filterAtivo === 'periodo') {
-      const de = document.getElementById('periodoDe')?.value;
-      const ate = document.getElementById('periodoAte')?.value;
-      chavesFiltradas = chavesFiltradas.filter((k) => k >= de && k <= ate);
-      abaNome = 'Relatorio_Periodo';
-    }
-
-    const linhas = [
-      ['Data', 'Hora Criada', 'Tarefa', 'Observações', 'Concluído', 'Excluído'],
-    ];
-    chavesFiltradas.sort().forEach((data) => {
-      if (bancoDadosGeral[data] && bancoDadosGeral[data].items) {
-        bancoDadosGeral[data].items.forEach((item) => {
-          linhas.push([
-            data,
-            item.horaCriacao || '00:00',
-            item.text,
-            item.observacoes || '-',
-            item.done ? 'Sim' : 'Não',
-            item.excluida ? 'Sim' : 'Não',
-          ]);
-        });
-      }
-    });
-    return { linhas, abaNome };
-  }
-
-  const csvBtn = document.getElementById('btnExportarCSV');
-  if (csvBtn) {
-    csvBtn.addEventListener('click', async () => {
-      const { linhas } = obterDadosFiltrados();
-      let csvContent = '';
-      linhas.forEach((r) => {
-        csvContent +=
-          r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(';') + '\n';
-      });
-      if (expModal) expModal.classList.remove('open');
-      await window.api.exportCsv(csvContent);
-    });
-  }
-
-  const xlsxBtn = document.getElementById('btnExportarXLSX');
-
-  if (xlsxBtn) {
-    xlsxBtn.addEventListener('click', async () => {
-      const { linhas, abaNome } = obterDadosFiltrados();
-
-      if (expModal) {
-        expModal.classList.remove('open');
-      }
-
-      await window.api.exportXlsx({
-        linhas,
-        abaNome: abaNome.substring(0, 31),
-      });
-    });
-  }
-
-  const mainFilter = document.getElementById('mainFilterSelect');
-  if (mainFilter) {
-    mainFilter.addEventListener('change', () => {
-      render();
-    });
-  }
-
-  const btnClearFilter = document.getElementById('btnClearFilter');
-  if (btnClearFilter) {
-    btnClearFilter.addEventListener('click', () => {
-      const d = new Date();
-      const hojeStr =
-        d.getFullYear() +
-        '-' +
-        String(d.getMonth() + 1).padStart(2, '0') +
-        '-' +
-        String(d.getDate()).padStart(2, '0');
-      dataAtualSelecionada = hojeStr;
-      const sd = document.getElementById('seletor-data');
-      if (sd) sd.value = hojeStr;
-      if (mainFilter) mainFilter.value = 'hoje';
-      atualizarInterfacePorData();
-    });
-  }
-}
 
 function setupTitlebar() {
   const pinBtn = document.getElementById('pinBtn');
@@ -851,6 +786,123 @@ function setupTitlebar() {
   if (closeBtn) {
     closeBtn.addEventListener('click', () => {
       window.api.closeApp();
+    });
+  }
+}
+
+// Antes desta função não existir de fato (apenas era chamada), o
+// ReferenceError interrompia toda a inicialização do app.
+function setupExportLogic() {
+  const overlay = document.getElementById('exportModalOverlay');
+  const openBtn = document.getElementById('openExportModalBtn');
+  const closeX = document.getElementById('closeExportModalX');
+  const btnCSV = document.getElementById('btnExportarCSV');
+  const btnXLSX = document.getElementById('btnExportarXLSX');
+
+  if (openBtn && overlay) {
+    openBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      overlay.classList.remove('hidden');
+      overlay.classList.add('open');
+    });
+  }
+
+  if (closeX && overlay) {
+    closeX.addEventListener('click', (e) => {
+      e.stopPropagation();
+      overlay.classList.add('hidden');
+      overlay.classList.remove('open');
+    });
+  }
+
+  function coletarDadosParaExportacao() {
+    const { chaves } = obterChavesPorFiltro();
+    const linhas = [];
+    chaves.sort().forEach((chaveData) => {
+      const dia = bancoDadosGeral[chaveData];
+      if (!dia || !dia.items) return;
+      dia.items
+        .filter((i) => !i.excluida)
+        .forEach((item) => {
+          linhas.push({
+            data: chaveData,
+            tarefa: item.text,
+            status: item.done ? 'Concluída' : 'Pendente',
+            horaCriacao: item.horaCriacao || '',
+            observacoes: item.observacoes || '',
+          });
+        });
+    });
+    return linhas;
+  }
+
+  function fecharModalExport() {
+    if (!overlay) return;
+    overlay.classList.add('hidden');
+    overlay.classList.remove('open');
+  }
+
+  if (btnCSV) {
+    btnCSV.addEventListener('click', async () => {
+      const linhas = coletarDadosParaExportacao();
+      if (linhas.length === 0) {
+        alert('Não há tarefas para exportar no filtro de visão selecionado.');
+        return;
+      }
+      const escapar = (v) =>
+        String(v).replace(/;/g, ',').replace(/\r?\n/g, ' ');
+      const header = 'Data;Tarefa;Status;Hora de Criacao;Observacoes';
+      const corpo = linhas
+        .map((l) =>
+          [l.data, l.tarefa, l.status, l.horaCriacao, l.observacoes]
+            .map(escapar)
+            .join(';')
+        )
+        .join('\n');
+      const csvFinal = header + '\n' + corpo;
+      const resultado = await window.api.exportCsv(csvFinal);
+      if (resultado && resultado.success) {
+        fecharModalExport();
+      } else if (resultado && resultado.error) {
+        alert('Não foi possível exportar o CSV: ' + resultado.error);
+      }
+    });
+  }
+
+  if (btnXLSX) {
+    btnXLSX.addEventListener('click', async () => {
+      const linhas = coletarDadosParaExportacao();
+      if (linhas.length === 0) {
+        alert('Não há tarefas para exportar no filtro de visão selecionado.');
+        return;
+      }
+      if (typeof XLSX === 'undefined') {
+        alert(
+          'A biblioteca de exportação para Excel não carregou. Verifique sua conexão com a internet e tente novamente.'
+        );
+        return;
+      }
+      const planilha = XLSX.utils.json_to_sheet(
+        linhas.map((l) => ({
+          Data: l.data,
+          Tarefa: l.tarefa,
+          Status: l.status,
+          'Hora de Criação': l.horaCriacao,
+          Observações: l.observacoes,
+        }))
+      );
+      const livro = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(livro, planilha, 'Checklist');
+      const arrayBuffer = XLSX.write(livro, {
+        bookType: 'xlsx',
+        type: 'array',
+      });
+      const resultado = await window.api.exportXlsx(arrayBuffer);
+      if (resultado && resultado.success) {
+        fecharModalExport();
+      } else if (resultado && resultado.error) {
+        alert('Não foi possível exportar o Excel: ' + resultado.error);
+      }
     });
   }
 }
@@ -990,6 +1042,7 @@ function abrirModalEdicaoTarefa(chaveData, idxReal) {
   const io = document.getElementById('inputEditarObservacoes');
   if (io) io.value = item.observacoes || '';
 
+  modalEdicao.classList.remove('hidden');
   modalEdicao.classList.add('open');
 
   const btnSalvar = document.getElementById('btnSalvarEdicaoTarefa');
@@ -998,10 +1051,15 @@ function abrirModalEdicaoTarefa(chaveData, idxReal) {
   const clonarCancelar = btnCancelar.cloneNode(true);
   btnSalvar.parentNode.replaceChild(clonarSalvar, btnSalvar);
   btnCancelar.parentNode.replaceChild(clonarCancelar, btnCancelar);
-  clonarCancelar.addEventListener('click', () =>
-    modalEdicao.classList.remove('open')
-  );
-  clonarSalvar.addEventListener('click', () => {
+
+  clonarCancelar.addEventListener('click', (e) => {
+    e.stopPropagation();
+    modalEdicao.classList.add('hidden');
+    modalEdicao.classList.remove('open');
+  });
+
+  clonarSalvar.addEventListener('click', (e) => {
+    e.stopPropagation();
     const novoTitulo = document
       .getElementById('inputEditarTitulo')
       .value.trim();
@@ -1010,18 +1068,32 @@ function abrirModalEdicaoTarefa(chaveData, idxReal) {
     bancoDadosGeral[chaveData].items[idxReal].observacoes = document
       .getElementById('inputEditarObservacoes')
       .value.trim();
+    modalEdicao.classList.add('hidden');
     modalEdicao.classList.remove('open');
     persist();
     render();
   });
 }
+
 function criarEstruturaModalEdicao() {
   const div = document.getElementById('modalEdicaoTarefaOverlay');
   if (div) return div;
   const novaDiv = document.createElement('div');
   novaDiv.id = 'modalEdicaoTarefaOverlay';
-  novaDiv.className = 'modal-overlay';
-  novaDiv.innerHTML = `✏️ Editar TarefaTítuloObservaçõesCancelarSalvar`;
+  novaDiv.className = 'modal-overlay hidden';
+  novaDiv.innerHTML = `
+    <div class="modal-content">
+      <h3>✏️ Editar Tarefa</h3>
+      <label>Título</label>
+      <input type="text" id="inputEditarTitulo" />
+      <label>Observações</label>
+      <textarea id="inputEditarObservacoes"></textarea>
+      <div style="display: flex; gap: 6px; margin-top: 12px;">
+        <button id="btnCancelarEdicaoTarefa" class="link-btn" style="flex: 1;">Cancelar</button>
+        <button id="btnSalvarEdicaoTarefa" class="link-btn" style="flex: 1; font-weight: 600;">Salvar</button>
+      </div>
+    </div>
+  `;
   document.body.appendChild(novaDiv);
   return novaDiv;
 }

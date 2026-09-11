@@ -1,3 +1,17 @@
+:root {
+  /* Tokens de identidade visual — não são cores de tema (essas continuam
+     vindo do JS via --note-bg/--text-color/etc). Aqui ficam só as medidas
+     estruturais que toda a interface deve compartilhar. */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --btn-height: 34px;
+  --btn-height-sm: 28px;
+  --shadow-modal: 0 10px 30px rgba(0, 0, 0, 0.22);
+  --shadow-card-hover: 0 4px 14px rgba(0, 0, 0, 0.12);
+  --ease: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
 * {
   box-sizing: border-box;
 }
@@ -30,6 +44,15 @@ body {
   font-size: 13px !important;
   font-weight: 600 !important;
   color: var(--text-color, #2b2b2b) !important;
+  /* Sem isso, o elemento fica preso na área arrastável da janela (#titlebar
+     tem -webkit-app-region: drag) e o clique nunca chega a focar o
+     contenteditable, então o título parece "travado". */
+  -webkit-app-region: no-drag !important;
+  cursor: text !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  min-width: 0 !important;
 }
 
 #titlebar-controls {
@@ -42,13 +65,22 @@ body {
   border: none !important;
   background: transparent !important;
   font-size: 13px !important;
-  padding: 5px 8px !important;
+  width: 26px !important;
+  height: 26px !important;
+  padding: 0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
   cursor: pointer !important;
-  border-radius: 6px !important;
+  border-radius: var(--radius-sm) !important;
   color: var(--text-color, #2b2b2b) !important;
+  transition: background 0.15s var(--ease) !important;
 }
 .tb-btn:hover {
   background: var(--bg-hover-alpha, rgba(0, 0, 0, 0.08)) !important;
+}
+.tb-btn:active {
+  background: var(--border-alpha, rgba(0, 0, 0, 0.18)) !important;
 }
 .tb-btn.active {
   background: var(--border-alpha, rgba(0, 0, 0, 0.18)) !important;
@@ -112,11 +144,22 @@ body {
   padding: 10px 12px !important;
   background: var(--bg-alpha) !important;
   border: 1px solid var(--border-alpha) !important;
-  border-radius: 8px !important;
-  transition: background 0.15s ease !important;
+  border-radius: var(--radius-md) !important;
+  transition:
+    background 0.15s var(--ease),
+    transform 0.15s var(--ease),
+    box-shadow 0.15s var(--ease) !important;
 }
 .item:hover {
   background: var(--bg-hover-alpha) !important;
+  transform: translateY(-1px) !important;
+  box-shadow: var(--shadow-card-hover) !important;
+}
+/* Durante o arraste o hover "elegante" (lift + sombra) atrapalha o
+   feedback de .dragging, então ele é desligado só nesse estado. */
+.item.dragging:hover {
+  transform: none !important;
+  box-shadow: none !important;
 }
 
 .item input[type='checkbox'] {
@@ -138,14 +181,34 @@ body {
   text-decoration: line-through !important;
   color: var(--sub-text-color, rgba(0, 0, 0, 0.4)) !important;
 }
+/* .edit-btn (✏️) não tinha NENHUMA regra própria antes — herdava o
+   botão cru do navegador (borda, fundo cinza padrão), destoando
+   completamente do .del-btn ao lado. Agora os dois compartilham a
+   mesma base circular. */
+.edit-btn,
 .del-btn {
   background: none !important;
   border: none !important;
+  width: 22px !important;
+  height: 22px !important;
+  padding: 0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border-radius: var(--radius-sm) !important;
   color: var(--sub-text-color, rgba(0, 0, 0, 0.35)) !important;
-  font-size: 13px !important;
-  cursor: pointer;
+  font-size: 12px !important;
+  cursor: pointer !important;
+  transition:
+    background 0.15s var(--ease),
+    color 0.15s var(--ease) !important;
+}
+.edit-btn:hover {
+  background: var(--bg-hover-alpha) !important;
+  color: var(--text-color) !important;
 }
 .del-btn:hover {
+  background: rgba(185, 28, 28, 0.1) !important;
   color: #b91c1c !important;
 }
 
@@ -161,19 +224,59 @@ body {
 #periodoDe,
 #periodoAte,
 #colorFields input,
+#inputEditarTitulo,
+#inputEditarObservacoes,
 select {
   border: 1px solid var(--border-alpha) !important;
   background-color: var(--input-bg-alpha) !important;
   color: var(--text-color) !important;
 }
 
+/* Modal de edição de tarefa (#modalEdicaoTarefaOverlay) é montado via JS
+   em criarEstruturaModalEdicao() e reaproveita a mesma casca .modal-content
+   — mas os campos internos (título/observações) e o <h3> não tinham
+   NENHUMA regra própria, então herdavam a tipografia/espaçamento crus
+   do navegador em vez de seguir a identidade dos outros modais. */
+#modalEdicaoTarefaOverlay .modal-content h3 {
+  margin: 0 0 12px !important;
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  color: var(--text-color) !important;
+}
+#modalEdicaoTarefaOverlay .modal-content label {
+  display: block !important;
+  font-size: 11px !important;
+  color: var(--sub-text-color) !important;
+  margin: 8px 0 4px !important;
+}
+#inputEditarTitulo,
+#inputEditarObservacoes {
+  width: 100% !important;
+  padding: 8px 10px !important;
+  border-radius: var(--radius-sm) !important;
+  font-size: 13px !important;
+  font-family: inherit !important;
+  outline: none !important;
+  transition: border-color 0.15s var(--ease) !important;
+}
+#inputEditarTitulo:focus,
+#inputEditarObservacoes:focus {
+  border-color: var(--text-color) !important;
+}
+#inputEditarObservacoes {
+  min-height: 64px !important;
+  resize: vertical !important;
+  line-height: 1.4 !important;
+}
+
 #newItemInput {
   flex: 1 !important;
-  padding: 10px 12px !important;
-  border-radius: 8px !important;
+  height: var(--btn-height) !important;
+  padding: 0 12px !important;
+  border-radius: var(--radius-md) !important;
   font-size: 13px !important;
   outline: none !important;
-  transition: border-color 0.15s ease !important;
+  transition: border-color 0.15s var(--ease) !important;
 }
 #newItemInput:focus {
   border-color: var(--text-color) !important;
@@ -185,17 +288,23 @@ select {
 
 #addBtn {
   border: none !important;
-  border-radius: 8px !important;
+  border-radius: var(--radius-md) !important;
   background-color: var(--text-color) !important;
   color: var(--modal-bg) !important;
   font-size: 14px !important;
   font-weight: 600 !important;
+  height: var(--btn-height) !important;
   padding: 0 16px !important;
   cursor: pointer !important;
-  transition: opacity 0.15s ease !important;
+  transition:
+    opacity 0.15s var(--ease),
+    transform 0.1s var(--ease) !important;
 }
 #addBtn:hover {
   opacity: 0.9 !important;
+}
+#addBtn:active {
+  transform: scale(0.96) !important;
 }
 
 #footerRow {
@@ -211,35 +320,48 @@ select {
 
 .link-btn,
 #resetBtn,
-#clearBtn {
+#clearBtn,
+#clearAllBtn {
   flex: 1 !important;
+  min-height: var(--btn-height-sm) !important;
   background: var(--bg-alpha) !important;
   border: 1px solid var(--border-alpha) !important;
   font-size: 11px !important;
   font-weight: 500 !important;
+  font-family: inherit !important;
   color: var(--text-color) !important;
   text-decoration: none !important;
   cursor: pointer !important;
   padding: 6px 4px !important;
-  border-radius: 6px !important;
+  border-radius: var(--radius-sm) !important;
   text-align: center !important;
-  transition: all 0.15s ease !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  transition:
+    background 0.15s var(--ease),
+    border-color 0.15s var(--ease) !important;
 }
 .link-btn:hover,
 #resetBtn:hover,
-#clearBtn:hover {
+#clearBtn:hover,
+#clearAllBtn:hover {
   background: var(--bg-hover-alpha) !important;
 }
 
+/* #clearAllBtn segue a MESMA identidade de botão dos irmãos acima —
+   só a cor de texto/borda muda para sinalizar "ação destrutiva".
+   Antes ele zerava background/border/padding e virava um link de texto
+   solto, quebrando a regra de "todos os botões com a mesma identidade
+   visual" e criando exatamente o antipadrão "link disfarçado de botão"
+   que não deveria aparecer nem no oposto (botão disfarçado de link). */
 #clearAllBtn {
-  background: none !important;
-  border: none !important;
-  font-size: 10.5px !important;
   color: #b91c1c !important;
-  text-decoration: none !important;
+  border-color: rgba(185, 28, 28, 0.35) !important;
   font-weight: 600 !important;
-  cursor: pointer !important;
-  padding: 0 !important;
+}
+#clearAllBtn:hover {
+  background: rgba(185, 28, 28, 0.1) !important;
 }
 
 .item.dragging {
@@ -251,11 +373,59 @@ select {
 
 .modal-overlay {
   background-color: rgba(0, 0, 0, 0.4) !important;
+  /* #modalOverlay, #confirmOverlay e #exportModalOverlay têm
+     style="display:none" inline no HTML, e o modal de edição de tarefa
+     (criado via JS) não tinha nenhuma regra de posição/visibilidade.
+     Antes, o renderer.js só alternava as classes "hidden"/"open", mas
+     não existia NENHUMA regra CSS para essas classes nesses elementos
+     -- por isso nada realmente aparecia ou desaparecia. Centralizando
+     aqui, com !important (para vencer o display:none inline), controla
+     a visibilidade de forma consistente para todos os overlays. */
+  position: fixed !important;
+  inset: 0 !important;
+  align-items: center !important;
+  justify-content: center !important;
+  display: none !important;
+}
+.modal-overlay.open {
+  display: flex !important;
 }
 
+/* #modalOverlay, #exportModalOverlay e #confirmOverlay são os 3 modais
+   reais do app. Cada .modal-content deles já vem com "position: relative"
+   e uma "width" fixa (280px / 280px / 250px) definidos inline no HTML,
+   e como o "position: absolute; top: 40px; right: 10px; width: 220px"
+   abaixo nunca tinha !important, o inline SEMPRE vencia no "position" e
+   na "width" — mas não no "top"/"right", que continuavam valendo (pois
+   o HTML não define top/right). Resultado: todo modal renderizava com
+   um offset fantasma de 40px pra baixo e ~10px pra esquerda em relação
+   ao centro real da tela, mesmo com o overlay pai centralizando via
+   flex. Aqui a posição é travada em "static" (o flex do overlay já
+   centraliza sozinho) e a largura vira responsiva, então o valor
+   inline de width fica só como teto máximo. */
 #modalOverlay .modal-content,
 #exportModalOverlay .modal-content,
 #confirmOverlay .modal-content,
+#modalEdicaoTarefaOverlay .modal-content {
+  position: static !important;
+  width: min(100%, 300px) !important;
+  max-width: calc(100vw - 32px) !important;
+  max-height: calc(100vh - 32px) !important;
+  overflow-y: auto !important;
+  background-color: var(--modal-bg) !important;
+  color: var(--text-color) !important;
+  border-radius: var(--radius-lg) !important;
+  border: 1px solid var(--border-alpha) !important;
+  box-shadow: var(--shadow-modal) !important;
+  padding: 16px !important;
+  z-index: 20 !important;
+  user-select: none !important;
+}
+
+/* #colorPanel é um dropdown de canto legado — não existe mais nenhum
+   elemento com esse id no HTML atual (os seletores de cor hoje moram
+   dentro do #modalOverlay), então a regra fica isolada aqui só para
+   não quebrar se ele voltar a ser usado. Não afeta nenhum modal ativo. */
 #colorPanel {
   position: absolute;
   top: 40px;
@@ -263,9 +433,9 @@ select {
   width: 220px;
   background-color: var(--modal-bg) !important;
   color: var(--text-color) !important;
-  border-radius: 12px !important;
+  border-radius: var(--radius-lg) !important;
   border: 1px solid var(--border-alpha) !important;
-  box-shadow: 0 8px 24px var(--border-alpha) !important;
+  box-shadow: var(--shadow-modal) !important;
   padding: 12px !important;
   z-index: 20 !important;
   user-select: none !important;
@@ -350,24 +520,192 @@ select option {
   padding: 0 !important;
 }
 
+/* Botões de ação dentro dos modais (Paleta, Exportar, Confirmação).
+   Antes cada um vinha só do style inline do HTML: alturas diferentes
+   (padding "7px" vs "8px" vs "5px 14px"), raios diferentes (7px vs 6px),
+   pesos de fonte diferentes. Aqui eles passam a compartilhar os mesmos
+   tokens de altura/raio/fonte — só a cor de preenchimento muda conforme
+   a intenção (primário / secundário / destrutivo). */
+#btnSalvarModal,
+#btnExportarCSV,
+#btnExportarXLSX,
+#confirmNo,
+#confirmYes {
+  height: var(--btn-height) !important;
+  padding: 0 14px !important;
+  border-radius: var(--radius-md) !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  font-family: inherit !important;
+  cursor: pointer !important;
+  transition:
+    opacity 0.15s var(--ease),
+    transform 0.1s var(--ease) !important;
+}
+#btnSalvarModal:active,
+#btnExportarCSV:active,
+#btnExportarXLSX:active,
+#confirmNo:active,
+#confirmYes:active {
+  transform: scale(0.97) !important;
+}
+
+/* Secundários: contorno sutil, fundo neutro do tema */
+#btnExportarCSV,
 #confirmNo {
   border: 1px solid var(--border-alpha) !important;
   background-color: var(--input-bg-alpha) !important;
   color: var(--text-color) !important;
+  font-weight: 500 !important;
 }
 
+/* Primário: preenchido com a cor de texto do tema (mesmo padrão do #addBtn) */
+#btnSalvarModal,
+#btnExportarXLSX {
+  border: none !important;
+  background-color: var(--text-color) !important;
+  color: var(--modal-bg) !important;
+}
+#btnSalvarModal:hover,
+#btnExportarXLSX:hover {
+  opacity: 0.9 !important;
+}
+
+/* Destrutivo: única cor fixa da interface (fora do tema), reservada
+   para a ação irreversível de excluir */
 #confirmYes {
+  border: none !important;
   background-color: #b91c1c !important;
   color: #ffffff !important;
+}
+#confirmYes:hover {
+  opacity: 0.9 !important;
+}
+
+/* Botões "X" de fechar modal — mesma identidade dos ícones da titlebar */
+#closeModalX,
+#closeExportModalX {
+  width: 24px !important;
+  height: 24px !important;
+  padding: 0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border: none !important;
+  border-radius: var(--radius-sm) !important;
+  background: transparent !important;
+  color: var(--sub-text-color) !important;
+  font-size: 13px !important;
+  cursor: pointer !important;
+  transition: background 0.15s var(--ease) !important;
+}
+#closeModalX:hover,
+#closeExportModalX:hover {
+  background: var(--bg-hover-alpha) !important;
+  color: var(--text-color) !important;
 }
 
 input[type='radio'],
 input[type='checkbox'] {
   accent-color: var(--text-color) !important;
+  width: 14px !important;
+  height: 14px !important;
+  cursor: pointer !important;
+}
+
+/* O ícone do calendário nativo (type="date") é um glifo do sistema
+   operacional — CSS não tem acesso a ele para recolorir conforme o
+   tema (--text-color), então em fundos escuros ele pode ficar quase
+   invisível. Como solução 100% CSS, ele ganha um "chip" claro fixo
+   atrás de si: garante contraste em qualquer tema, mesmo sem poder
+   herdar a cor de texto dinamicamente. */
+input[type='date']::-webkit-calendar-picker-indicator {
+  background-color: rgba(255, 255, 255, 0.85) !important;
+  border-radius: 4px !important;
+  padding: 2px !important;
+  cursor: pointer !important;
+}
+input[type='date']::-webkit-calendar-picker-indicator:hover {
+  background-color: rgba(255, 255, 255, 1) !important;
 }
 
 .tooltip,
 .icon {
   background: var(--text-color, #000000) !important;
   color: var(--modal-bg, #ffffff) !important;
+}
+
+/* #btnClearFilter é uma micro-ação secundária ("Voltar para Hoje"), não
+   uma ação primária — por isso ela continua com cara de link (sem o
+   "chip" dos botões do rodapé), mas de forma intencional: cor consistente
+   com o tema, sublinhado só reforça no hover/foco, e ganha padding
+   mínimo para não ficar colado nos vizinhos nem virar alvo de toque
+   minúsculo. */
+#btnClearFilter {
+  font-family: inherit !important;
+  border-radius: 4px !important;
+  padding: 2px 4px !important;
+  text-decoration: none !important;
+  opacity: 0.85 !important;
+  transition:
+    opacity 0.15s var(--ease),
+    text-decoration-color 0.15s var(--ease) !important;
+}
+#btnClearFilter:hover,
+#btnClearFilter:focus-visible {
+  opacity: 1 !important;
+  text-decoration: underline !important;
+}
+
+/* ==========================================
+   RESPONSIVIDADE — 320px a 800px+
+   O app roda numa janela redimensionável (minWidth 320 no main.js),
+   então tanto o extremo estreito quanto janelas bem largas precisam
+   continuar legíveis, sem overflow horizontal e sem modal cortado.
+   ========================================== */
+
+/* Modo compacto: título mais próximo do usado no widget original,
+   ícones da titlebar com menos respiro entre si, footer com wrap
+   controlado ao invés de textos se comprimindo até virar sopa de letra. */
+@media (max-width: 380px) {
+  #titlebar {
+    padding: 0 4px 0 10px !important;
+  }
+  #titlebar-controls {
+    gap: 0px !important;
+  }
+  #content {
+    padding: 8px 10px 12px !important;
+  }
+  #footerRow {
+    flex-wrap: wrap !important;
+  }
+  .link-btn,
+  #resetBtn,
+  #clearBtn,
+  #clearAllBtn {
+    flex: 1 1 calc(50% - 3px) !important;
+    font-size: 10.5px !important;
+  }
+}
+
+@media (max-width: 340px) {
+  #mainFilterSelect {
+    font-size: 11px !important;
+  }
+  #seletor-data {
+    min-width: 0 !important;
+    flex-shrink: 1 !important;
+  }
+}
+
+/* Janela larga: em vez de deixar cards e inputs esticarem até virar
+   uma única linha rala de 800px, o conteúdo central fica com uma
+   largura de leitura confortável e centralizada — o padrão usado em
+   apps "premium" de lista/tarefas. */
+@media (min-width: 600px) {
+  #content {
+    max-width: 560px !important;
+    margin: 0 auto !important;
+  }
 }
