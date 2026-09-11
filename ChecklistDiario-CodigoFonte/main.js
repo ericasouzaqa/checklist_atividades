@@ -107,8 +107,6 @@ function createWindow() {
   });
 
   win.loadFile('index.html');
-  win.webContents.openDevTools();
-  ``;
 
   Menu.setApplicationMenu(null);
 }

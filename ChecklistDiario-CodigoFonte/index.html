@@ -7,7 +7,7 @@
   </head>
   <body>
     <div id="titlebar">
-      <div id="titlebar-label">Checklist Diário da Erica</div>
+      <div id="titlebar-label">Checklist Diário</div>
       <div id="titlebar-controls">
         <button class="tb-btn" id="paletteBtn" title="Mudar Cor / Tema">
           🎨
@@ -19,9 +19,9 @@
         >
           📊
         </button>
-        <button class="tb-btn" id="pinBtn" title="Fixar Janela">📌</button>
-        <button class="tb-btn" id="minBtn">➖</button>
-        <button class="tb-btn" id="closeBtn">✕</button>
+        <button class="tb-btn" id="pinBtn" data-tooltip="Fixar janela no topo">📌</button>
+        <button class="tb-btn" id="minBtn" data-tooltip="Minimizar">➖</button>
+        <button class="tb-btn" id="closeBtn" data-tooltip="Fechar">✕</button>
       </div>
     </div>
 
@@ -449,9 +449,11 @@
           <strong>Filtro de Visão</strong> selecionado no painel traseiro.
         </div>
 
-        <div
-          style="display: flex; gap: 8px; margin-bottom: 10px; display: none"
-        >
+        <!-- Campos de intervalo reservados para uso futuro.
+             exportDe / exportAte são inicializados no renderer.js
+             mas não expostos na UI atual: manter para compatibilidade
+             com versões futuras do filtro de exportação. -->
+        <div style="display: none">
           <input type="date" id="exportDe" /><input
             type="date"
             id="exportAte"
@@ -578,8 +580,11 @@
       </div>
     </div>
 
-    <!-- Necessário para o botão "Exportar Arquivo Excel (XLSX)" gerar o .xlsx de verdade -->
-    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <!-- Antes carregava de um CDN (https://cdn.jsdelivr.net/...), o que
+         quebrava a exportação XLSX sem internet — incoerente com um app
+         que se descreve como offline. "xlsx" já era dependência real no
+         package.json; agora usa a cópia local instalada em node_modules. -->
+    <script src="node_modules/xlsx/dist/xlsx.full.min.js"></script>
     <script src="renderer.js"></script>
   </body>
 </html>

@@ -95,6 +95,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   setupChecklistControls();
   setupExportLogic();
   setupFiltrosGlobais();
+  setupTooltips();
 
   if (window.api && typeof window.api.onCloseRequested === 'function') {
     window.api.onCloseRequested(async () => {
@@ -142,13 +143,11 @@ function setupModalEvents() {
     });
   }
 
-  if (closeBtn && overlay) {
-    closeBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      overlay.classList.add('hidden');
-      overlay.classList.remove('open');
-    });
-  }
+  // Nota: btnSalvarModal NÃO precisa de um listener extra só para fechar —
+  // o listener de salvar (linhas abaixo) já chama applyColorAndTexture(..., true)
+  // que persiste, e o botão fecha o modal via o único listener consolidado
+  // em btnSalvarModal mais abaixo. Listener de "fechar sem salvar" removido
+  // para evitar duplo disparo no mesmo clique.
 
   const corModoGlobal = document.getElementById('corModoGlobal');
   const corModoLocal = document.getElementById('corModoLocal');
@@ -207,12 +206,18 @@ function setupModalEvents() {
 
   const btnSalvarModal = document.getElementById('btnSalvarModal');
   if (btnSalvarModal) {
-    btnSalvarModal.addEventListener('click', () => {
+    btnSalvarModal.addEventListener('click', (e) => {
+      e.stopPropagation();
       applyColorAndTexture(
         inputCor?.value || '#FFF3B0',
         dropdownTextTextures?.value || 'none',
         true
       );
+      // Fechar o modal no mesmo listener, evitando duplo registro
+      if (overlay) {
+        overlay.classList.add('hidden');
+        overlay.classList.remove('open');
+      }
     });
   }
 }
@@ -486,7 +491,6 @@ function render() {
   list.innerHTML = '';
 
   const { mainFilter, chaves: chavesParaRenderizar } = obterChavesPorFiltro();
-  const hojeStr = dataAtualSelecionada;
 
   const cc = document.getElementById('containerCamposPeriodo');
   if (cc) cc.style.display = mainFilter === 'periodo' ? 'flex' : 'none';
@@ -540,6 +544,7 @@ function render() {
       editBtn.className = 'edit-btn';
       editBtn.innerHTML = '✏️';
       editBtn.style.webkitAppRegion = 'no-drag';
+      editBtn.setAttribute('data-tooltip', 'Editar tarefa');
       editBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         abrirModalEdicaoTarefa(chaveData, idxReal);
@@ -549,6 +554,7 @@ function render() {
       del.className = 'del-btn';
       del.textContent = '✕';
       del.style.webkitAppRegion = 'no-drag';
+      del.setAttribute('data-tooltip', 'Remover tarefa');
       del.addEventListener('click', (e) => {
         e.stopPropagation();
         abrirCaixaConfirmacaoCustomizada(
@@ -556,7 +562,7 @@ function render() {
           () => {
             const agora = new Date();
             bancoDadosGeral[chaveData].items[idxReal].excluida = true;
-            bancoDadosGeral[chaveData].items[idxReal].dataExclusao = hojeStr;
+            bancoDadosGeral[chaveData].items[idxReal].dataExclusao = chaveData;
             bancoDadosGeral[chaveData].items[idxReal].horaExclusao =
               String(agora.getHours()).padStart(2, '0') +
               ':' +
@@ -681,7 +687,10 @@ function setupChecklistControls() {
   };
 
   const addBtn = document.getElementById('addBtn');
-  if (addBtn) addBtn.addEventListener('click', add);
+  if (addBtn) {
+    addBtn.setAttribute('data-tooltip', 'Adicionar tarefa');
+    addBtn.addEventListener('click', add);
+  }
   if (input)
     input.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') add();
@@ -689,6 +698,7 @@ function setupChecklistControls() {
 
   const resetBtn = document.getElementById('resetBtn');
   if (resetBtn) {
+    resetBtn.setAttribute('data-tooltip', 'Marcar ou desmarcar todas');
     resetBtn.addEventListener('click', () => {
       const dadosDoDia = bancoDadosGeral[dataAtualSelecionada];
       if (!dadosDoDia) return;
@@ -738,6 +748,7 @@ function setupChecklistControls() {
 
   const clearAllBtn = document.getElementById('clearAllBtn');
   if (clearAllBtn) {
+    clearAllBtn.setAttribute('data-tooltip', 'Apagar todas as tarefas do dia');
     clearAllBtn.addEventListener('click', () => {
       const dadosDoDia = bancoDadosGeral[dataAtualSelecionada];
       if (!dadosDoDia) return;
@@ -910,7 +921,11 @@ function setupExportLogic() {
 function applyColorAndTexture(hex, textura, save) {
   if (!hex || hex === 'undefined') hex = '#FFF3B0';
   if (!textura) textura = 'none';
-  if (!bancoDadosGeral || !bancoDadosGeral[dataAtualSelecionada]) return;
+  // Não bloqueia a aplicação visual quando a chave do dia ainda não existe:
+  // a cor e a textura são propriedades do DOM (CSS vars) e devem ser
+  // aplicadas independentemente do estado do banco. Só o bloco "save"
+  // precisa do dado da data — e é guardado pelo próprio if (save) abaixo.
+  if (save && (!bancoDadosGeral || !bancoDadosGeral[dataAtualSelecionada])) return;
 
   const num = parseInt(hex.replace('#', ''), 16);
   let r = (num >> 16) & 255;
@@ -955,31 +970,47 @@ function applyColorAndTexture(hex, textura, save) {
     corInputBgDefinitiva
   );
 
+  // Antes de aplicar a textura nova, limpa qualquer resíduo da textura
+  // anterior. Sem isso, --neon-glow ou --gradiente-bg ficavam "grudados"
+  // para sempre depois de usados uma vez, mesmo trocando para outro
+  // tema/textura depois (nenhum código aqui nunca chamava
+  // removeProperty()).
+  document.documentElement.style.removeProperty('--textura-ativa');
+  document.documentElement.style.removeProperty('--neon-glow');
+  document.documentElement.style.removeProperty('--gradiente-bg');
+
+  // Texturas glass, mármore e glitter precisam de múltiplas propriedades CSS
+  // ao mesmo tempo — o que é impossível via var() (var() só substitui o valor
+  // de UMA propriedade). A solução correta é aplicar as propriedades
+  // diretamente no elemento via style, usando uma classe auxiliar no body
+  // para as que dependem de backgroundImage (sobreposta ao --gradiente-bg).
+  document.body.style.backdropFilter = '';
+  document.body.style.backgroundImage = '';
+  document.body.style.backgroundSize = '';
+
   if (textura === 'glass') {
-    document.documentElement.style.setProperty(
-      '--textura-ativa',
-      'backdrop-filter: blur(16px) saturate(120%); background: rgba(255,255,255,0.1);'
-    );
+    document.body.style.backdropFilter = 'blur(16px) saturate(120%)';
+    document.body.style.backgroundImage =
+      'linear-gradient(rgba(255,255,255,0.08), rgba(255,255,255,0.08))';
   } else if (textura === 'neon') {
     document.documentElement.style.setProperty(
       '--neon-glow',
       `0 0 20px ${hex}, inset 0 0 10px ${hex}`
     );
   } else if (textura === 'marmore') {
-    document.documentElement.style.setProperty(
-      '--textura-ativa',
-      'background-image: linear-gradient(to right, rgba(0,0,0,0.03) 1px, transparent 1px), linear-gradient(to bottom, rgba(0,0,0,0.03) 1px, transparent 1px); background-size: 20px 20px;'
-    );
+    document.body.style.backgroundImage =
+      'linear-gradient(to right, rgba(0,0,0,0.04) 1px, transparent 1px), ' +
+      'linear-gradient(to bottom, rgba(0,0,0,0.04) 1px, transparent 1px)';
+    document.body.style.backgroundSize = '20px 20px';
   } else if (textura === 'gradiente') {
     document.documentElement.style.setProperty(
       '--gradiente-bg',
       `linear-gradient(135deg, ${hex} 0%, rgba(26,26,26,0.85) 100%)`
     );
   } else if (textura === 'glitter') {
-    document.documentElement.style.setProperty(
-      '--textura-ativa',
-      'background-image: radial-gradient(circle, rgba(255,255,255,0.15) 1px, transparent 1px); background-size: 8px 8px;'
-    );
+    document.body.style.backgroundImage =
+      'radial-gradient(circle, rgba(255,255,255,0.18) 1px, transparent 1px)';
+    document.body.style.backgroundSize = '8px 8px';
   }
 
   if (save) {
@@ -1073,6 +1104,60 @@ function abrirModalEdicaoTarefa(chaveData, idxReal) {
     persist();
     render();
   });
+}
+
+// ==========================================
+// TOOLTIPS
+// ==========================================
+
+function setupTooltips() {
+  // Cria o container de tooltip uma única vez
+  let box = document.getElementById('tooltip-box');
+  if (!box) {
+    box = document.createElement('div');
+    box.id = 'tooltip-box';
+    document.body.appendChild(box);
+  }
+
+  let hideTimer = null;
+
+  function showTooltip(el) {
+    const label = el.getAttribute('data-tooltip');
+    if (!label) return;
+    clearTimeout(hideTimer);
+    box.textContent = label;
+    box.classList.add('visible');
+
+    const rect = el.getBoundingClientRect();
+    const bw = box.offsetWidth;
+    const bh = box.offsetHeight;
+    // Posiciona acima do elemento, centralizado
+    let top = rect.top - bh - 8;
+    let left = rect.left + rect.width / 2 - bw / 2;
+    // Evita sair pela esquerda/direita
+    left = Math.max(6, Math.min(left, window.innerWidth - bw - 6));
+    // Se não couber acima, vai abaixo
+    if (top < 4) top = rect.bottom + 8;
+    box.style.top = top + 'px';
+    box.style.left = left + 'px';
+  }
+
+  function hideTooltip() {
+    hideTimer = setTimeout(() => box.classList.remove('visible'), 80);
+  }
+
+  // Delegação de eventos: captura qualquer elemento com data-tooltip,
+  // incluindo botões criados dinamicamente por render()
+  document.addEventListener('mouseover', (e) => {
+    const target = e.target.closest('[data-tooltip]');
+    if (target) showTooltip(target);
+  });
+  document.addEventListener('mouseout', (e) => {
+    const target = e.target.closest('[data-tooltip]');
+    if (target) hideTooltip();
+  });
+  // Esconde ao clicar para não ficar travado após a ação
+  document.addEventListener('click', () => box.classList.remove('visible'));
 }
 
 function criarEstruturaModalEdicao() {

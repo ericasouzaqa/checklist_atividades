@@ -38,7 +38,8 @@
       "preload.js",
       "renderer.js",
       "index.html",
-      "icon.ico"
+      "icon.ico",
+      "style.css"
     ]
   }
 }
