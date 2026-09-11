@@ -4,133 +4,577 @@
     <meta charset="UTF-8" />
     <title>Checklist Diário</title>
     <link rel="stylesheet" href="style.css" />
-    <style>
-      /* Pequeno ajuste para alinhar o calendário e o botão no design existente */
-      .date-container {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 10px;
-        gap: 10px;
-      }
-      #seletor-data {
-        border: none;
-        padding: 4px 8px;
-        border-radius: 4px;
-        font-weight: bold;
-        background: rgba(255, 255, 255, 0.5);
-        font-family: Arial, sans-serif;
-        font-size: 13px;
-        color: #333;
-        cursor: pointer;
-      }
-    </style>
   </head>
   <body>
     <div id="titlebar">
-      <div id="titlebar-drag">
-        <span id="titlebar-label">📝 Checklist Diário</span>
-      </div>
+      <div id="titlebar-label">Checklist Diário da Erica</div>
       <div id="titlebar-controls">
-        <button
-          id="pinBtn"
-          class="tb-btn"
-          title="Fixar por cima das outras janelas"
-        >
-          📌
-        </button>
-        <button id="paletteBtn" class="tb-btn" title="Personalizar cor">
+        <button class="tb-btn" id="paletteBtn" title="Mudar Cor / Tema">
           🎨
         </button>
-        <button id="minBtn" class="tb-btn" title="Minimizar">🗕</button>
-        <button id="maxBtn" class="tb-btn" title="Maximizar / Restaurar">
-          🗖
+        <button
+          class="tb-btn"
+          id="openExportModalBtn"
+          title="Exportar Relatórios"
+        >
+          📊
         </button>
+        <button class="tb-btn" id="pinBtn" title="Fixar Janela">📌</button>
+        <button class="tb-btn" id="minBtn">➖</button>
+        <button class="tb-btn" id="closeBtn">✕</button>
       </div>
     </div>
 
     <div id="content">
-      <!-- Container ajustado para exibir o dia da semana à esquerda e o calendário interativo à direita -->
-      <div class="date-container">
-        <div id="dateLabel"></div>
-        <input type="date" id="seletor-data" />
+      <div
+        style="
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          flex-shrink: 0;
+          margin-bottom: 4px;
+        "
+      >
+        <select
+          id="mainFilterSelect"
+          style="
+            padding: 4px 6px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 600;
+            border: 1px solid var(--border-alpha);
+            background: var(--input-bg-alpha);
+            color: var(--text-color);
+          "
+        >
+          <option value="hoje">Visão: Hoje</option>
+          <option value="semana">Visão: Semana Atual</option>
+          <option value="mes">Visão: Mês Atual</option>
+          <option value="ano">Visão: Ano Atual</option>
+          <option value="periodo">Visão: Por Período</option>
+        </select>
+
+        <input
+          type="date"
+          id="seletor-data"
+          style="
+            padding: 3px 6px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-family: inherit;
+            border: 1px solid var(--border-alpha);
+            background: var(--input-bg-alpha);
+            color: var(--text-color);
+          "
+        />
       </div>
 
-      <div id="progressBarBg"><div id="progressBarFill"></div></div>
+      <div
+        id="containerCamposPeriodo"
+        style="
+          display: none;
+          gap: 8px;
+          align-items: center;
+          margin-bottom: 10px;
+          flex-shrink: 0;
+          font-size: 11px;
+          color: var(--sub-text-color);
+        "
+      >
+        <span>De:</span>
+        <input
+          type="date"
+          id="periodoDe"
+          style="
+            padding: 2px 4px;
+            border-radius: 5px;
+            border: 1px solid var(--border-alpha);
+            background: var(--input-bg-alpha);
+            color: var(--text-color);
+          "
+        />
+        <span>Até:</span>
+        <input
+          type="date"
+          id="periodoAte"
+          style="
+            padding: 2px 4px;
+            border-radius: 5px;
+            border: 1px solid var(--border-alpha);
+            background: var(--input-bg-alpha);
+            color: var(--text-color);
+          "
+        />
+      </div>
+      <div id="dateLabel">Carregando data...</div>
+
+      <div id="progressBarBg">
+        <div id="progressBarFill"></div>
+      </div>
+
+      <div
+        style="
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          font-size: 11px;
+          margin-bottom: 8px;
+          flex-shrink: 0;
+          color: var(--sub-text-color);
+          font-weight: 500;
+        "
+      >
+        <span id="progresso-texto">Metas concluídas: 0%</span>
+        <span id="medalha-texto">📝 Lista limpa!</span>
+      </div>
 
       <div id="list"></div>
 
       <div id="addRow">
-        <input type="text" id="newItemInput" placeholder="Nova atividade..." />
-        <button id="addBtn">+</button>
+        <input
+          type="text"
+          id="newItemInput"
+          placeholder="Adicionar nova tarefa..."
+          autocomplete="off"
+        />
+        <button id="addBtn">➕</button>
       </div>
 
       <div id="footerRow">
-        <button class="link-btn" id="resetBtn">Desmarcar tudo</button>
-        <button class="link-btn" id="clearBtn">Limpar lista</button>
-        <!-- Novo botão de exportação estilizado com as suas classes de link nativas -->
+        <button class="link-btn" id="resetBtn">SELECIONAR TUDO</button>
         <button
           class="link-btn"
-          id="exportBtn"
-          style="font-weight: bold; color: #2e7d32"
+          id="clearBtn"
+          title="Apaga apenas os itens que já foram marcados como selecionados"
         >
-          Exportar Planilha
+          Limpar Selecionadas
+        </button>
+        <button
+          class="link-btn"
+          id="clearAllBtn"
+          style="color: #b91c1c; text-decoration: none; font-weight: 600"
+        >
+          Apagar Tudo
+        </button>
+      </div>
+
+      <div
+        style="
+          margin-top: 8px;
+          text-align: center;
+          flex-shrink: 0;
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          gap: 6px;
+          font-size: 10.5px;
+          color: var(--sub-text-color);
+        "
+      >
+        <input
+          type="checkbox"
+          id="flagAutoStart"
+          style="cursor: pointer; accent-color: var(--text-color)"
+        />
+        <label for="flagAutoStart" style="cursor: pointer; user-select: none"
+          >Iniciar junto com o Windows</label
+        >
+        <button
+          id="btnClearFilter"
+          style="
+            background: none;
+            border: none;
+            font-size: 10.5px;
+            color: var(--text-color);
+            text-decoration: underline;
+            cursor: pointer;
+            padding: 0;
+            margin-left: auto;
+          "
+        >
+          Voltar para Hoje
+        </button>
+      </div>
+    </div>
+    <!-- MODAL DE CONFIGURAÇÃO DE CORES (PALETA) -->
+    <div
+      id="modalOverlay"
+      class="modal-overlay"
+      style="
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.4);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        z-index: 100;
+      "
+    >
+      <div
+        class="modal-content"
+        style="
+          position: relative;
+          width: 280px;
+          padding: 16px;
+          border-radius: 12px;
+          background: var(--modal-bg);
+          color: var(--text-color);
+          box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+        "
+      >
+        <div
+          style="
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+          "
+        >
+          <h3 style="margin: 0; font-size: 14px">🎨 Personalizar Cores</h3>
+          <button
+            id="closeModalX"
+            style="
+              background: none;
+              border: none;
+              font-size: 14px;
+              cursor: pointer;
+              color: var(--sub-text-color);
+            "
+          >
+            ✕
+          </button>
+        </div>
+
+        <div
+          style="
+            margin-bottom: 10px;
+            font-size: 11px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            color: var(--sub-text-color);
+          "
+        >
+          <label
+            style="
+              display: flex;
+              align-items: center;
+              gap: 6px;
+              cursor: pointer;
+            "
+            ><input
+              type="radio"
+              name="modoCor"
+              id="corModoGlobal"
+              checked
+              style="accent-color: var(--text-color)"
+            />
+            Aplicar em todo o histórico (Padrão)</label
+          >
+          <label
+            style="
+              display: flex;
+              align-items: center;
+              gap: 6px;
+              cursor: pointer;
+            "
+            ><input
+              type="radio"
+              name="modoCor"
+              id="corModoLocal"
+              style="accent-color: var(--text-color)"
+            />
+            Aplicar apenas na data selecionada</label
+          >
+          <label
+            style="
+              display: flex;
+              align-items: center;
+              gap: 6px;
+              cursor: pointer;
+            "
+            ><input
+              type="radio"
+              name="modoCor"
+              id="corModoPeriodo"
+              style="accent-color: var(--text-color)"
+            />
+            Aplicar no intervalo de visão ativo</label
+          >
+        </div>
+
+        <label class="slider-label">Escolha a Cor Base:</label>
+        <input
+          type="color"
+          id="inputCorNativa"
+          style="
+            width: 100%;
+            height: 28px;
+            border-radius: 6px;
+            border: 1px solid var(--border-alpha);
+            background: transparent;
+            cursor: pointer;
+            margin-bottom: 8px;
+          "
+        />
+
+        <label class="slider-label">Estilo / Textura:</label>
+        <select
+          id="dropdownTexturas"
+          style="
+            width: 100%;
+            padding: 4px;
+            border-radius: 6px;
+            font-size: 11px;
+            border: 1px solid var(--border-alpha);
+            background: var(--input-bg-alpha);
+            color: var(--text-color);
+            margin-bottom: 8px;
+          "
+        >
+          <option value="none">Sólido Limpo</option>
+          <option value="glass">Efeito Vidro Fosco</option>
+          <option value="marmore">Grade Corporativa</option>
+          <option value="glitter">Pontilhado Glitter</option>
+          <option value="neon">Brilho Neon Ativo</option>
+          <option value="gradiente">Gradiente Metálico</option>
+        </select>
+
+        <label class="slider-label">Temas Rápidos:</label>
+        <select
+          id="dropdownTemasPredefinidos"
+          style="
+            width: 100%;
+            padding: 4px;
+            border-radius: 6px;
+            font-size: 11px;
+            border: 1px solid var(--border-alpha);
+            background: var(--input-bg-alpha);
+            color: var(--text-color);
+            margin-bottom: 12px;
+          "
+        >
+          <option value="custom">Personalizado...</option>
+          <option value="#FFF3B0">Amarelo Post-it</option>
+          <option value="#FFD1DC">Rosa Pastel</option>
+          <option value="#C1E1C1">Verde Menta</option>
+          <option value="#B3E5FC">Azul Céu</option>
+          <option value="#E1BEE7">Lilás Suave</option>
+          <option value="#2C2C2C">Modo Dark Puro</option>
+        </select>
+
+        <button
+          id="btnSalvarModal"
+          style="
+            width: 100%;
+            padding: 7px;
+            border: none;
+            border-radius: 7px;
+            background: var(--text-color);
+            color: var(--modal-bg);
+            font-weight: 600;
+            font-size: 12px;
+            cursor: pointer;
+          "
+        >
+          SALVAR CONFIGURAÇÃO
         </button>
       </div>
     </div>
 
-    <!-- Painel de cor: roda de cores completa -->
-    <div id="colorPanel" class="hidden">
-      <div id="colorPanelHeader">
-        <span>Personalizar cor</span>
-        <button id="closeColorBtn" class="tb-btn">✕</button>
+    <!-- MODAL DE EXPORTAÇÃO DE RELATÓRIOS -->
+    <div
+      id="exportModalOverlay"
+      class="modal-overlay"
+      style="
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.4);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        z-index: 101;
+      "
+    >
+      <div
+        class="modal-content"
+        style="
+          position: relative;
+          width: 280px;
+          padding: 16px;
+          border-radius: 12px;
+          background: var(--modal-bg);
+          color: var(--text-color);
+          box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+        "
+      >
+        <div
+          style="
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 14px;
+          "
+        >
+          <h3 style="margin: 0; font-size: 14px">📊 Gerar Relatório</h3>
+          <button
+            id="closeExportModalX"
+            style="
+              background: none;
+              border: none;
+              font-size: 14px;
+              cursor: pointer;
+              color: var(--sub-text-color);
+            "
+          >
+            ✕
+          </button>
+        </div>
+
+        <div
+          style="
+            font-size: 11px;
+            color: var(--sub-text-color);
+            margin-bottom: 12px;
+            line-height: 1.4;
+          "
+        >
+          O arquivo gerado conterá as informações baseadas no
+          <strong>Filtro de Visão</strong> selecionado no painel traseiro.
+        </div>
+
+        <div
+          style="display: flex; gap: 8px; margin-bottom: 10px; display: none"
+        >
+          <input type="date" id="exportDe" /><input
+            type="date"
+            id="exportAte"
+          />
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 8px">
+          <button
+            id="btnExportarCSV"
+            style="
+              width: 100%;
+              padding: 8px;
+              border: 1px solid var(--border-alpha);
+              border-radius: 7px;
+              background: var(--input-bg-alpha);
+              color: var(--text-color);
+              font-weight: 500;
+              font-size: 11.5px;
+              cursor: pointer;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              gap: 6px;
+            "
+          >
+            📄 Exportar Planilha CSV
+          </button>
+          <button
+            id="btnExportarXLSX"
+            style="
+              width: 100%;
+              padding: 8px;
+              border: none;
+              border-radius: 7px;
+              background: var(--text-color);
+              color: var(--modal-bg);
+              font-weight: 600;
+              font-size: 11.5px;
+              cursor: pointer;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              gap: 6px;
+            "
+          >
+            📈 Exportar Arquivo Excel (XLSX)
+          </button>
+        </div>
       </div>
+    </div>
 
-      <canvas id="wheel" width="160" height="160"></canvas>
-      <div id="wheelCursor"></div>
-
-      <label class="slider-label">Brilho</label>
-      <input type="range" id="brightnessSlider" min="0" max="100" value="100" />
-
-      <div id="colorFields">
-        <label>HEX</label>
-        <input type="text" id="hexInput" maxlength="7" />
-        <label>R</label><input type="number" id="rInput" min="0" max="255" />
-        <label>G</label><input type="number" id="gInput" min="0" max="255" />
-        <label>B</label><input type="number" id="bInput" min="0" max="255" />
-      </div>
-
-      <div id="presetRow">
-        <button
-          class="swatch"
-          data-color="#FFF3B0"
-          style="background: #fff3b0"
-        ></button>
-        <button
-          class="swatch"
-          data-color="#FFD6E8"
-          style="background: #ffd6e8"
-        ></button>
-        <button
-          class="swatch"
-          data-color="#C9F2C7"
-          style="background: #c9f2c7"
-        ></button>
-        <button
-          class="swatch"
-          data-color="#BFE3FF"
-          style="background: #bfe3ff"
-        ></button>
-        <button
-          class="swatch"
-          data-color="#E5D4FF"
-          style="background: #e5d4ff"
-        ></button>
-        <button
-          class="swatch"
-          data-color="#FFFFFF"
-          style="background: #ffffff"
-        ></button>
+    <!-- CAIXA DE CONFIRMAÇÃO DIÁLOGOS CUSTOMIZADOS -->
+    <div
+      id="confirmOverlay"
+      class="modal-overlay"
+      style="
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.3);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        z-index: 200;
+      "
+    >
+      <div
+        class="modal-content"
+        style="
+          width: 250px;
+          padding: 14px;
+          border-radius: 10px;
+          background: var(--modal-bg);
+          color: var(--text-color);
+          text-align: center;
+          box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+        "
+      >
+        <div
+          id="confirmMessage"
+          style="
+            font-size: 12px;
+            margin-bottom: 14px;
+            font-weight: 500;
+            line-height: 1.4;
+          "
+        >
+          Mensagem...
+        </div>
+        <div style="display: flex; justify-content: center; gap: 10px">
+          <button
+            id="confirmNo"
+            style="
+              padding: 5px 14px;
+              border: 1px solid var(--border-alpha);
+              background: var(--input-bg-alpha);
+              color: var(--text-color);
+              border-radius: 6px;
+              font-size: 11px;
+              cursor: pointer;
+              font-weight: 500;
+            "
+          >
+            Não
+          </button>
+          <button
+            id="confirmYes"
+            style="
+              padding: 5px 14px;
+              border: none;
+              background: #b91c1c;
+              color: #ffffff;
+              border-radius: 6px;
+              font-size: 11px;
+              cursor: pointer;
+              font-weight: 600;
+            "
+          >
+            Sim
+          </button>
+        </div>
       </div>
     </div>
 

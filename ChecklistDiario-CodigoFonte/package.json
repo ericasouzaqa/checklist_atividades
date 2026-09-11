@@ -1,17 +1,44 @@
 {
-  "name": "checklist-diario-widget",
+  "name": "checklist-diario-erica",
   "version": "1.0.0",
-  "description": "Widget de checklist diário estilo sticky note",
+  "description": "Widget de checklist flutuante offline minimalista e reativo",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "package-win": "electron-packager . ChecklistDiario --platform=win32 --arch=x64 --out=dist --overwrite --app-version=1.0.0"
+    "build:portable": "electron-builder --win"
   },
+  "keywords": [],
   "author": "Erica",
-  "license": "MIT",
+  "license": "ISC",
+  "dependencies": {
+    "xlsx": "^0.18.5"
+  },
   "devDependencies": {
     "electron": "^31.0.0",
-    "electron-installer-windows": "^3.0.0",
-    "electron-packager": "^17.1.2"
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.erica.checklistdiario",
+    "productName": "ChecklistDiario",
+    "win": {
+      "target": [
+        "portable"
+      ],
+      "icon": "icon.ico"
+    },
+    "portable": {
+      "artifactName": "ChecklistDiario_Portatil.${ext}",
+      "splashImage": null,
+      "requestExecutionLevel": "user"
+    },
+    "asar": true,
+    "includeSubNodeModules": false,
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer.js",
+      "index.html",
+      "icon.ico"
+    ]
   }
 }

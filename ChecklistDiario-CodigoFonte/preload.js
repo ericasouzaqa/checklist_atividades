@@ -4,8 +4,15 @@ contextBridge.exposeInMainWorld('api', {
   loadData: () => ipcRenderer.invoke('load-data'),
   saveData: (data) => ipcRenderer.invoke('save-data', data),
   togglePin: (pinned) => ipcRenderer.invoke('toggle-pin', pinned),
-  isPinned: () => ipcRenderer.invoke('is-pinned'),
-  toggleMaximize: () => ipcRenderer.invoke('maximize-toggle'),
   minimize: () => ipcRenderer.invoke('minimize'),
-  exportCsv: (csvContent) => ipcRenderer.invoke('export-csv', csvContent), // 👈 linha nv
+  closeApp: () => ipcRenderer.invoke('close-app'),
+  exportCsv: (content) => ipcRenderer.invoke('export-csv', content),
+  exportXlsx: (buffer) => ipcRenderer.invoke('export-xlsx', buffer),
+  toggleAutostart: (enable) => ipcRenderer.invoke('toggle-autostart', enable),
+  getAutostart: () => ipcRenderer.invoke('get-autostart'),
+
+  onCloseRequested: (callback) =>
+    ipcRenderer.on('app-close-requested', () => callback()),
+
+  confirmClose: () => ipcRenderer.send('app-close-confirmed'),
 });
