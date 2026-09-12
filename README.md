@@ -4,7 +4,9 @@ Aplicação desktop desenvolvida para organização diária de tarefas, acompanh
 
 ## 🎬 Demonstração
 
-assets/demo.gif
+<img width="1898" height="938" alt="demo" src="https://github.com/user-attachments/assets/a3fd01c0-bb5c-4f81-b267-c09cde6e3533" />
+
+
 
 ## ✨ Recursos
 
