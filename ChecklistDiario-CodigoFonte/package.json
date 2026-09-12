@@ -39,7 +39,8 @@
       "renderer.js",
       "index.html",
       "icon.ico",
-      "style.css"
+      "style.css",
+      "node_modules/xlsx/**/*"
     ]
   }
 }

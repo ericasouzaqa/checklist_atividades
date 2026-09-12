@@ -1,6 +1,14 @@
-const { app, BrowserWindow, ipcMain, Menu, dialog } = require('electron');
+const {
+  app,
+  BrowserWindow,
+  ipcMain,
+  Menu,
+  dialog,
+  shell,
+} = require('electron');
 const path = require('path');
 const fs = require('fs');
+const XLSX = require('xlsx');
 
 let win;
 let isReadyToClose = false; // Controle de estado unificado para o Handshake IPC
@@ -83,7 +91,11 @@ function createWindow() {
     minWidth: 320,
     minHeight: 460,
     resizable: true,
-    maximizable: false,
+    // Antes travada em false: item 11 do escopo pede que a janela expanda
+    // (cards/áreas crescendo proporcionalmente) — isso só faz sentido se o
+    // usuário puder maximizar. O crescimento proporcional em si é resolvido
+    // no CSS (responsividade), não aqui.
+    maximizable: true,
     minimizable: true,
     alwaysOnTop: false,
     frame: false,
@@ -240,21 +252,40 @@ ipcMain.handle('save-data', (event, data) => {
   }
 });
 
-ipcMain.handle('export-xlsx', async (event, buffer) => {
+// Substitui o antigo 'export-xlsx' (aba única). Recebe um objeto já agrupado
+// por mês, montado no renderer: { "Setembro_2026": [ {Data, ...}, ... ], ... }
+// Cada chave vira uma aba. A montagem do workbook fica aqui (main process)
+// porque "xlsx" já é uma dependency real do projeto — não precisa de CDN
+// nem de cópia da lib rodando dentro do renderer.
+ipcMain.handle('export-xlsx-multi', async (event, dadosPorMes) => {
   const { filePath } = await dialog.showSaveDialog(win, {
     title: 'Exportar Planilha Excel',
     defaultPath: path.join(app.getPath('downloads'), 'Checklist_Tarefas.xlsx'),
     filters: [{ name: 'Arquivos Excel (*.xlsx)', extensions: ['xlsx'] }],
   });
-  if (filePath) {
-    try {
-      fs.writeFileSync(filePath, Buffer.from(buffer));
-      return { success: true };
-    } catch (e) {
-      return { success: false, error: e.message };
+  if (!filePath) return { success: false };
+
+  try {
+    const livro = XLSX.utils.book_new();
+    const chaves = Object.keys(dadosPorMes);
+
+    if (chaves.length === 0) {
+      return { success: false, error: 'Nenhum dado para exportar.' };
     }
+
+    chaves.forEach((nomeAba) => {
+      // Excel: máx 31 caracteres, proíbe : \ / ? * [ ]
+      const nomeSeguro = nomeAba.replace(/[:\\/?*\[\]]/g, '-').slice(0, 31);
+      const planilha = XLSX.utils.json_to_sheet(dadosPorMes[nomeAba]);
+      XLSX.utils.book_append_sheet(livro, planilha, nomeSeguro);
+    });
+
+    const buffer = XLSX.write(livro, { bookType: 'xlsx', type: 'buffer' });
+    fs.writeFileSync(filePath, buffer);
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: e.message };
   }
-  return { success: false };
 });
 
 ipcMain.handle('export-csv', async (event, content) => {
@@ -272,6 +303,22 @@ ipcMain.handle('export-csv', async (event, content) => {
     }
   }
   return { success: false };
+});
+
+// Requisito 12 (Links): abre a URL no navegador padrão do sistema, nunca
+// dentro do próprio app. Validação simples de esquema para não virar uma
+// forma de executar comandos locais (file://, javascript:, etc).
+ipcMain.handle('open-external', (event, url) => {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      return { success: false, error: 'Protocolo não permitido.' };
+    }
+    shell.openExternal(url);
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: 'URL inválida.' };
+  }
 });
 
 // Requisito: Canal preparado para efetuar backup preventivo antes de qualquer futura restauração

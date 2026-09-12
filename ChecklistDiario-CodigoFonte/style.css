@@ -20,50 +20,71 @@
   --ease: cubic-bezier(0.4, 0, 0.2, 1);
 
   /* ----------------------------------------------------------------
-     PALETA DERIVADA — gerada só com CSS (color-mix), a partir da ÚNICA
-     cor que o JS realmente escolhe: --note-bg (+ --text-color, que o
-     próprio JS já calcula por contraste/YIQ). Antes disso, topbar,
-     cards, rodapé, botão primário e barra de progresso usavam
-     literalmente o MESMO valor (--bg-alpha ou --text-color) — por isso
-     a UI parecia "chapada": tudo tinha exatamente o mesmo tom, só a
-     transparência mudava. Agora cada papel tem seu próprio tom,
-     misturado em proporções diferentes entre a cor base e o texto. */
+     PALETA DERIVADA — os 8 papéis (texto, borda, superfície, card,
+     hover, principal, secundária, destaque) são gerados no renderer.js
+     (função gerarPaleta) a partir da ÚNICA cor escolhida pela usuária,
+     e aplicados via setProperty() em :root — por isso sempre vencem os
+     valores abaixo. Migrou de color-mix() puro em CSS para o JS porque
+     color-mix() só sabe misturar, não sabe TESTAR contraste: dependendo
+     do tom escolhido, a mistura fixa (ex.: 45% base + 55% texto) podia
+     cair abaixo do mínimo AA — foi o que aconteceu com o botão primário
+     no tema padrão (4.23:1, abaixo de 4.5:1). O JS calcula a razão de
+     contraste real (fórmula WCAG) e ajusta a luminosidade até garantir
+     o mínimo, em qualquer cor.
+     As declarações color-mix() abaixo continuam existindo só como
+     fallback estático para o instante entre o primeiro paint da janela
+     e o applyColorAndTexture() rodar (mesmo espírito dos vários
+     var(--x, fallback) usados no resto deste arquivo). */
   --palette-surface-1: var(--bg-alpha); /* cards — já existia */
   --palette-surface-2: color-mix(
     in srgb,
     var(--note-bg, #fff3b0) 84%,
     var(--text-color, #2b2b2b) 16%
-  ); /* topbar / rodapé — um tom a mais de profundidade que os cards */
+  ); /* topbar / rodapé / barra de seleção */
   --palette-surface-3: var(--modal-bg); /* modais — já existia, sólido */
   --palette-accent: color-mix(
     in srgb,
     var(--note-bg, #fff3b0) 45%,
     var(--text-color, #2b2b2b) 55%
-  ); /* ações primárias / progresso — cor "de marca", não o cinza puro do texto */
+  ); /* principal — ações primárias / progresso */
   --palette-accent-hover: color-mix(
     in srgb,
     var(--palette-accent) 85%,
     white 15%
   );
+  /* Texto sobre a cor principal (botões preenchidos). Antes essas telas
+     usavam --modal-bg (branco/preto do TEMA todo) como cor do texto do
+     botão, sem checar se aquele par específico (accent × modal-bg)
+     realmente tinha contraste — era outra origem do mesmo bug de
+     contraste insuficiente. Agora o próprio JS decide, par a par. */
+  --palette-accent-text: var(--modal-bg, #ffffff);
+  /* Secundária — ações de segundo nível ("Exportar CSV", "Não"). */
+  --palette-secundaria: color-mix(
+    in srgb,
+    var(--note-bg, #fff3b0) 72%,
+    var(--text-color, #2b2b2b) 28%
+  );
   --palette-border-strong: color-mix(
     in srgb,
     var(--border-alpha) 55%,
     var(--text-color, #2b2b2b) 45%
-  ); /* borda de destaque (foco, itens ativos) — mais presente que --border-alpha */
+  ); /* destaque (foco, seleção, links) — mais presente que --border-alpha */
+  /* "R, G, B" cru usado por rgba(var(--textura-overlay-rgb), alpha) nas
+     texturas Mármore/Glitter abaixo — fallback escuro (tema padrão é
+     claro); o JS substitui pelo mesmo tom escolhido para --text-color. */
+  --textura-overlay-rgb: 26, 26, 26;
 }
 
 /* ------------------------------------------------------------------
    SOBRE OS EFEITOS DE TEXTURA (Glass / Mármore / Glitter / Neon / Gradiente)
-   O renderer.js grava a textura ativa em variáveis CSS via
-   setProperty(), mas para "glass", "marmore" e "glitter" ele grava uma
-   STRING com várias declarações inteiras dentro de UMA variável só
-   (ex: "--textura-ativa: backdrop-filter: ...; background: ...;").
-   Isso não é uma limitação deste arquivo: var() só pode substituir o
-   VALOR de uma única propriedade — nunca um bloco de propriedades — 
-   então essas 3 texturas não têm como ser "religadas" só editando o
-   CSS, sem tocar no renderer.js (fora do escopo desta entrega).
-   "Neon" e "Gradiente" gravam um valor único e válido cada uma, então
-   essas duas são conectadas abaixo. */
+   O renderer.js aplica a textura ativa como uma classe em <body>
+   ("textura-glass", "textura-marmore", "textura-glitter") em vez de
+   escrever várias propriedades soltas via style inline — var() só
+   substitui o VALOR de uma única propriedade, nunca um bloco inteiro,
+   então um bloco de regras aqui (que pode ter quantas propriedades
+   precisar) é o lugar certo para isso, não uma CSS var. "Neon" e
+   "Gradiente" continuam gravando um valor único cada uma
+   (--neon-glow / --gradiente-bg) e são consumidas onde já estavam. */
 
 * {
   box-sizing: border-box;
@@ -82,6 +103,105 @@ body {
   transition: background 0.15s ease !important;
   overflow: hidden !important;
   user-select: none !important;
+}
+
+/* Mármore e Glitter — a sobreposição usava rgba(0,0,0,x) e
+   rgba(255,255,255,x) fixos, então "Mármore" sumia em temas escuros e
+   "Glitter" sumia em temas claros (a cor de fundo escolhida não mudava
+   nada). Agora as duas usam rgba(var(--textura-overlay-rgb), alpha) —
+   a MESMA cor que o JS já escolheu para --text-color por contraste
+   (YIQ) contra a cor de base — então a sobreposição sempre acompanha o
+   brilho do tema, em vez de uma cor fixa que só funciona por acaso. */
+body.textura-marmore {
+  background-image:
+    linear-gradient(
+      to right,
+      rgba(var(--textura-overlay-rgb, 26, 26, 26), 0.05) 1px,
+      transparent 1px
+    ),
+    linear-gradient(
+      to bottom,
+      rgba(var(--textura-overlay-rgb, 26, 26, 26), 0.05) 1px,
+      transparent 1px
+    ) !important;
+  background-size: 20px 20px !important;
+}
+body.textura-glitter {
+  background-image: radial-gradient(
+    circle,
+    rgba(var(--textura-overlay-rgb, 26, 26, 26), 0.16) 1px,
+    transparent 1px
+  ) !important;
+  background-size: 8px 8px !important;
+}
+
+/* Vidro Fosco (Glass) — antes o backdrop-filter era aplicado direto no
+   <body>, mas a BrowserWindow abre com transparent: false, então não
+   existe nada renderizado ATRÁS do body dentro da própria janela para
+   o blur processar: o efeito nunca aparecia, com nenhuma cor.
+   A correção sem depender de mudar a janela (fora do escopo desta
+   entrega) é o padrão "glassmorphism" tradicional: o body ganha um
+   fundo colorido com profundidade (blobs em radial-gradient, usando as
+   próprias cores da paleta) e são os PAINÉIS por cima dele — topbar,
+   cards, modais, barra de seleção, menu de contexto — que recebem
+   fundo translúcido + backdrop-filter. Esses painéis têm, sim, algo
+   atrás para borrar (o próprio fundo do body), então o efeito passa a
+   ser visível de verdade, reagindo à cor e ao tema escolhidos. */
+body.textura-glass {
+  background-image:
+    radial-gradient(
+      circle at 18% 20%,
+      var(--palette-accent, var(--note-bg)) 0%,
+      transparent 55%
+    ),
+    radial-gradient(
+      circle at 85% 15%,
+      var(--palette-secundaria, var(--note-bg)) 0%,
+      transparent 50%
+    ),
+    radial-gradient(
+      circle at 75% 90%,
+      var(--palette-accent-hover, var(--note-bg)) 0%,
+      transparent 55%
+    ) !important;
+  background-attachment: fixed !important;
+}
+body.textura-glass #titlebar {
+  background: color-mix(
+    in srgb,
+    var(--palette-surface-2, var(--bg-alpha)) 55%,
+    transparent
+  ) !important;
+  backdrop-filter: blur(16px) saturate(160%) !important;
+  -webkit-backdrop-filter: blur(16px) saturate(160%) !important;
+}
+body.textura-glass .item,
+body.textura-glass .selecao-bar,
+body.textura-glass .context-menu {
+  background: color-mix(
+    in srgb,
+    var(--bg-alpha, rgba(255, 255, 255, 0.45)) 55%,
+    transparent
+  ) !important;
+  backdrop-filter: blur(12px) saturate(150%) !important;
+  -webkit-backdrop-filter: blur(12px) saturate(150%) !important;
+  border-color: rgba(var(--textura-overlay-rgb, 26, 26, 26), 0.22) !important;
+}
+body.textura-glass .item:hover {
+  background: color-mix(
+    in srgb,
+    var(--bg-hover-alpha, rgba(255, 255, 255, 0.65)) 55%,
+    transparent
+  ) !important;
+}
+body.textura-glass .modal-content {
+  background: color-mix(
+    in srgb,
+    var(--modal-bg, #ffffff) 65%,
+    transparent
+  ) !important;
+  backdrop-filter: blur(18px) saturate(160%) !important;
+  -webkit-backdrop-filter: blur(18px) saturate(160%) !important;
 }
 
 #titlebar {
@@ -444,7 +564,7 @@ select {
   border-top-right-radius: var(--radius-md) !important;
   border-bottom-right-radius: var(--radius-md) !important;
   background-color: var(--palette-accent, var(--text-color)) !important;
-  color: var(--modal-bg) !important;
+  color: var(--palette-accent-text, var(--modal-bg)) !important;
   font-size: 14px !important;
   font-weight: 600 !important;
   height: var(--btn-height) !important;
@@ -568,7 +688,9 @@ select {
 #modalOverlay .modal-content,
 #exportModalOverlay .modal-content,
 #confirmOverlay .modal-content,
-#modalEdicaoTarefaOverlay .modal-content {
+#modalEdicaoTarefaOverlay .modal-content,
+#lixeiraOverlay .modal-content,
+#moverDataOverlay .modal-content {
   position: static !important;
   width: min(100%, 300px) !important;
   max-width: calc(100vw - 32px) !important;
@@ -721,21 +843,23 @@ select option {
   box-shadow: var(--shadow-btn-hover) !important;
 }
 
-/* Secundários: contorno sutil, fundo neutro do tema */
+/* Secundários: fundo na cor secundária derivada da paleta (antes era
+   --input-bg-alpha, pensado para campos de formulário, não para botão —
+   agora tem um papel próprio, distinto da cor principal). */
 #btnExportarCSV,
 #confirmNo {
   border: 1px solid var(--border-alpha) !important;
-  background-color: var(--input-bg-alpha) !important;
+  background-color: var(--palette-secundaria, var(--input-bg-alpha)) !important;
   color: var(--text-color) !important;
   font-weight: 500 !important;
 }
 
-/* Primário: preenchido com a cor de destaque derivada (mesmo padrão do #addBtn) */
+/* Primário: preenchido com a cor principal derivada (mesmo padrão do #addBtn) */
 #btnSalvarModal,
 #btnExportarXLSX {
   border: none !important;
   background-color: var(--palette-accent, var(--text-color)) !important;
-  color: var(--modal-bg) !important;
+  color: var(--palette-accent-text, var(--modal-bg)) !important;
 }
 #btnSalvarModal:hover,
 #btnExportarXLSX:hover {
@@ -863,6 +987,204 @@ input[type='date']::-webkit-calendar-picker-indicator:hover {
   text-decoration: underline !important;
 }
 
+/* Utilitário genérico — usado pela barra de seleção e pelo menu de
+   contexto, que (diferente dos .modal-overlay) ficam VISÍVEIS por
+   padrão e precisam ser escondidos explicitamente. */
+.hidden {
+  display: none !important;
+}
+
+/* ==========================================
+   BARRA DE SELEÇÃO — Transporte de Tarefas (item 3)
+   Some/aparece via .hidden; a contagem e os handlers ficam no renderer.js.
+   ========================================== */
+.selecao-bar {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 8px !important;
+  background: var(--palette-surface-2, var(--bg-alpha)) !important;
+  border: 1px solid var(--palette-border-strong, var(--border-alpha)) !important;
+  border-radius: var(--radius-md) !important;
+  padding: 6px 10px !important;
+  margin-bottom: 8px !important;
+  flex-shrink: 0 !important;
+}
+#selecaoContagem {
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  color: var(--text-color) !important;
+}
+.selecao-bar-actions {
+  display: flex !important;
+  gap: 6px !important;
+  flex-shrink: 0 !important;
+}
+/* Versão compacta do .link-btn — a barra é uma linha só, não tem espaço
+   pra altura cheia de --btn-height-sm com padding igual ao rodapé. */
+.selecao-bar-btn {
+  flex: 0 0 auto !important;
+  min-height: 24px !important;
+  padding: 3px 10px !important;
+  font-size: 10px !important;
+}
+#btnMoverSelecionadas {
+  background-color: var(--palette-accent, var(--text-color)) !important;
+  color: var(--palette-accent-text, var(--modal-bg)) !important;
+  border-color: transparent !important;
+}
+#btnMoverSelecionadas:hover {
+  background-color: var(
+    --palette-accent-hover,
+    var(--palette-accent)
+  ) !important;
+}
+
+/* Item em modo-seleção: o checkbox extra de "selecionado pra mover" fica
+   à esquerda do checkbox de "concluída", com um destaque de borda para
+   diferenciar visualmente das duas funções (evita confundir concluir
+   com selecionar — heurística de reconhecimento, não memorização). */
+.item.selecionavel {
+  border-color: var(--palette-border-strong, var(--border-alpha)) !important;
+}
+.item-select-checkbox {
+  accent-color: var(--palette-accent, var(--text-color)) !important;
+  cursor: pointer !important;
+}
+
+/* ==========================================
+   MENU DE CONTEXTO — clique-direito num item (item 3, 2º gatilho)
+   Posição (top/left) é calculada e aplicada via JS no renderer.js.
+   ========================================== */
+.context-menu {
+  position: fixed !important;
+  z-index: 300 !important;
+  background: var(--modal-bg) !important;
+  border: 1px solid var(--border-alpha) !important;
+  border-radius: var(--radius-md) !important;
+  box-shadow: var(--shadow-modal) !important;
+  padding: 4px !important;
+  min-width: 150px !important;
+}
+.context-menu-item {
+  display: block !important;
+  width: 100% !important;
+  text-align: left !important;
+  background: none !important;
+  border: none !important;
+  border-radius: var(--radius-sm) !important;
+  padding: 7px 10px !important;
+  font-size: 12px !important;
+  font-family: inherit !important;
+  color: var(--text-color) !important;
+  cursor: pointer !important;
+  transition: background 0.15s var(--ease) !important;
+}
+.context-menu-item:hover {
+  background: var(--bg-hover-alpha) !important;
+}
+
+/* ==========================================
+   LIXEIRA — Restauração (item 2)
+   Estrutura é montada dinamicamente pelo renderer.js dentro de
+   #lixeiraLista, agrupada por dia.
+   ========================================== */
+.lixeira-day-header {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 6px !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  color: var(--sub-text-color) !important;
+  margin: 12px 0 6px !important;
+  padding-bottom: 4px !important;
+  border-bottom: 1px dashed var(--border-alpha) !important;
+}
+.lixeira-day-header:first-child {
+  margin-top: 0 !important;
+}
+/* "Restaurar o dia inteiro" — cobre o caso de apagar um dia por engano
+   sem precisar restaurar item por item. */
+.lixeira-restore-day-btn {
+  flex-shrink: 0 !important;
+  background: none !important;
+  border: 1px solid var(--border-alpha) !important;
+  border-radius: var(--radius-sm) !important;
+  padding: 2px 6px !important;
+  font-size: 10px !important;
+  font-weight: 600 !important;
+  color: var(--text-color) !important;
+  cursor: pointer !important;
+  transition: background 0.15s var(--ease) !important;
+}
+.lixeira-restore-day-btn:hover {
+  background: var(--bg-hover-alpha) !important;
+}
+.lixeira-item {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  padding: 6px 4px !important;
+  border-bottom: 1px solid var(--border-alpha) !important;
+}
+.lixeira-item:last-child {
+  border-bottom: none !important;
+}
+.lixeira-item-info {
+  flex: 1 !important;
+  min-width: 0 !important;
+}
+.lixeira-item-text {
+  font-size: 12px !important;
+  color: var(--text-color) !important;
+  text-decoration: line-through !important;
+  word-break: break-word !important;
+}
+.lixeira-item-meta {
+  font-size: 10px !important;
+  color: var(--sub-text-color) !important;
+  margin-top: 1px !important;
+}
+.lixeira-restore-btn {
+  flex-shrink: 0 !important;
+  background: none !important;
+  border: none !important;
+  width: 26px !important;
+  height: 26px !important;
+  border-radius: var(--radius-sm) !important;
+  font-size: 13px !important;
+  cursor: pointer !important;
+  color: var(--text-color) !important;
+  transition: background 0.15s var(--ease) !important;
+}
+.lixeira-restore-btn:hover {
+  background: var(--bg-hover-alpha) !important;
+}
+.lixeira-empty {
+  font-size: 12px !important;
+  color: var(--sub-text-color) !important;
+  text-align: center !important;
+  padding: 24px 8px !important;
+}
+
+/* ==========================================
+   LINKS DENTRO DA TAREFA (item 12)
+   O texto é escapado antes de virar HTML no renderer.js; só padrões
+   http(s):// viram <a>. Clique é interceptado lá para abrir no
+   navegador padrão via window.api.openExternal (nunca dentro do app).
+   ========================================== */
+.item-text a {
+  color: var(--palette-accent, var(--text-color)) !important;
+  text-decoration: underline !important;
+  text-underline-offset: 2px !important;
+  cursor: pointer !important;
+  word-break: break-all !important;
+}
+.item-text a:hover {
+  opacity: 0.8 !important;
+}
+
 /* ==========================================
    RESPONSIVIDADE — 320px a 800px+
    O app roda numa janela redimensionável (minWidth 320 no main.js),
@@ -891,17 +1213,16 @@ input[type='date']::-webkit-calendar-picker-indicator:hover {
   #footerRow {
     flex-wrap: wrap !important;
   }
+  /* Agora são 4 botões (Selecionar/Limpar/Mover/Apagar): 2x2 em grade
+     fecha certinho, sem sobra de linha — por isso o "último ocupa 100%"
+     que existia aqui antes (para 3 botões, ímpar) foi removido. */
   .link-btn,
   #resetBtn,
   #clearBtn,
+  #moveBtn,
   #clearAllBtn {
     flex: 1 1 calc(50% - 3px) !important;
     font-size: 10.5px !important;
-  }
-  /* Terceiro botão sozinho na segunda linha ocupa a largura toda em vez
-     de ficar "flutuando" à esquerda com metade do espaço vazio. */
-  #footerRow > *:last-child {
-    flex-basis: 100% !important;
   }
   #periodoDe,
   #periodoAte {
@@ -927,5 +1248,36 @@ input[type='date']::-webkit-calendar-picker-indicator:hover {
   #content {
     max-width: 560px !important;
     margin: 0 auto !important;
+  }
+}
+
+/* A partir daqui a janela já está bem maior que o widget original
+   (agora pode inclusive ser maximizada — maximizable:true no main.js).
+   Sem isso, o conteúdo ficava "flutuando" numa faixa estreita centralizada
+   num mar de espaço vazio; aqui os cards, textos e área de leitura
+   crescem junto, na proporção certa, em vez de só alargar a margem. */
+@media (min-width: 900px) {
+  #content {
+    max-width: 720px !important;
+  }
+  .item {
+    padding: 13px 16px !important;
+  }
+  .item-text {
+    font-size: 14.5px !important;
+  }
+  #newItemInput {
+    font-size: 14px !important;
+  }
+  .tb-btn {
+    width: 32px !important;
+    height: 32px !important;
+    font-size: 15px !important;
+  }
+}
+
+@media (min-width: 1200px) {
+  #content {
+    max-width: 820px !important;
   }
 }

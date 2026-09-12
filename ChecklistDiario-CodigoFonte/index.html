@@ -9,17 +9,26 @@
     <div id="titlebar">
       <div id="titlebar-label">Checklist Diário</div>
       <div id="titlebar-controls">
-        <button class="tb-btn" id="paletteBtn" title="Mudar Cor / Tema">
+        <button class="tb-btn" id="paletteBtn" data-tooltip="Mudar cor / tema">
           🎨
         </button>
         <button
           class="tb-btn"
           id="openExportModalBtn"
-          title="Exportar Relatórios"
+          data-tooltip="Exportar relatórios"
         >
           📊
         </button>
-        <button class="tb-btn" id="pinBtn" data-tooltip="Fixar janela no topo">📌</button>
+        <button
+          class="tb-btn"
+          id="trashBtn"
+          data-tooltip="Lixeira: restaurar tarefas e dias apagados"
+        >
+          🗑️
+        </button>
+        <button class="tb-btn" id="pinBtn" data-tooltip="Fixar janela no topo">
+          📌
+        </button>
         <button class="tb-btn" id="minBtn" data-tooltip="Minimizar">➖</button>
         <button class="tb-btn" id="closeBtn" data-tooltip="Fechar">✕</button>
       </div>
@@ -128,6 +137,30 @@
         <span id="medalha-texto">📝 Lista limpa!</span>
       </div>
 
+      <!-- Barra de modo-seleção para o Transporte de Tarefas (item 3).
+           Fica oculta por padrão; o renderer.js mostra/atualiza a contagem
+           quando o modo de seleção é ativado por qualquer um dos 3 gatilhos
+           (botão Mover, Ctrl+clique, ou "Mover para..." do menu de contexto). -->
+      <div id="selecaoBar" class="selecao-bar hidden">
+        <span id="selecaoContagem">0 selecionada(s)</span>
+        <div class="selecao-bar-actions">
+          <button
+            id="btnMoverSelecionadas"
+            class="link-btn selecao-bar-btn"
+            data-tooltip="Escolher a data de destino"
+          >
+            Mover
+          </button>
+          <button
+            id="btnCancelarSelecao"
+            class="link-btn selecao-bar-btn"
+            data-tooltip="Sair do modo de seleção"
+          >
+            Cancelar
+          </button>
+        </div>
+      </div>
+
       <div id="list"></div>
 
       <div id="addRow">
@@ -148,6 +181,13 @@
           title="Apaga apenas os itens que já foram marcados como selecionados"
         >
           Limpar Selecionadas
+        </button>
+        <button
+          class="link-btn"
+          id="moveBtn"
+          data-tooltip="Selecionar tarefas pendentes para mover para outro dia"
+        >
+          🔀 Mover
         </button>
         <button
           class="link-btn"
@@ -196,6 +236,15 @@
         </button>
       </div>
     </div>
+
+    <!-- MENU DE CONTEXTO (clique-direito num item): um dos 3 gatilhos do
+         Transporte de Tarefas. Posicionado dinamicamente pelo renderer.js. -->
+    <div id="itemContextMenu" class="context-menu hidden">
+      <button id="ctxMoverItem" class="context-menu-item">
+        🔀 Mover para...
+      </button>
+    </div>
+
     <!-- MODAL DE CONFIGURAÇÃO DE CORES (PALETA) -->
     <div
       id="modalOverlay"
@@ -445,8 +494,10 @@
             line-height: 1.4;
           "
         >
-          O arquivo gerado conterá as informações baseadas no
-          <strong>Filtro de Visão</strong> selecionado no painel traseiro.
+          O arquivo gerado conterá
+          <strong>ativas, concluídas e apagadas</strong>, baseado no
+          <strong>Filtro de Visão</strong> selecionado no painel traseiro. No
+          XLSX, cada mês vira uma aba separada.
         </div>
 
         <!-- Campos de intervalo reservados para uso futuro.
@@ -505,7 +556,170 @@
       </div>
     </div>
 
-    <!-- CAIXA DE CONFIRMAÇÃO DIÁLOGOS CUSTOMIZADOS -->
+    <!-- LIXEIRA / RESTAURAÇÃO (item 2) -->
+    <div
+      id="lixeiraOverlay"
+      class="modal-overlay"
+      style="
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.4);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        z-index: 102;
+      "
+    >
+      <div
+        class="modal-content lixeira-content"
+        style="
+          position: relative;
+          width: 260px;
+          max-height: 400px;
+          padding: 16px;
+          border-radius: 12px;
+          background: var(--modal-bg);
+          color: var(--text-color);
+          box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+          display: flex;
+          flex-direction: column;
+        "
+      >
+        <div
+          style="
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+            flex-shrink: 0;
+          "
+        >
+          <h3 style="margin: 0; font-size: 14px">🗑️ Lixeira</h3>
+          <button
+            id="closeLixeiraX"
+            style="
+              background: none;
+              border: none;
+              font-size: 14px;
+              cursor: pointer;
+              color: var(--sub-text-color);
+            "
+          >
+            ✕
+          </button>
+        </div>
+        <div
+          style="
+            font-size: 10.5px;
+            color: var(--sub-text-color);
+            margin-bottom: 10px;
+            flex-shrink: 0;
+          "
+        >
+          Nada aqui é apagado de verdade. Restaure uma tarefa ou o dia inteiro
+          quando precisar.
+        </div>
+        <div id="lixeiraLista" style="overflow-y: auto; flex: 1"></div>
+      </div>
+    </div>
+
+    <!-- MOVER TAREFAS: escolha da data de destino (item 3) -->
+    <div
+      id="moverDataOverlay"
+      class="modal-overlay"
+      style="
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.4);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        z-index: 103;
+      "
+    >
+      <div
+        class="modal-content"
+        style="
+          position: relative;
+          width: 240px;
+          padding: 16px;
+          border-radius: 12px;
+          background: var(--modal-bg);
+          color: var(--text-color);
+          box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+        "
+      >
+        <div
+          style="
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+          "
+        >
+          <h3 style="margin: 0; font-size: 14px">🔀 Mover Tarefas</h3>
+          <button
+            id="closeMoverDataX"
+            style="
+              background: none;
+              border: none;
+              font-size: 14px;
+              cursor: pointer;
+              color: var(--sub-text-color);
+            "
+          >
+            ✕
+          </button>
+        </div>
+        <div
+          id="moverDataLabel"
+          style="
+            font-size: 11px;
+            color: var(--sub-text-color);
+            margin-bottom: 10px;
+          "
+        >
+          Mover 0 tarefa(s) para:
+        </div>
+        <input
+          type="date"
+          id="moverDataInput"
+          style="
+            width: 100%;
+            padding: 6px;
+            border-radius: 6px;
+            border: 1px solid var(--border-alpha);
+            background: var(--input-bg-alpha);
+            color: var(--text-color);
+            margin-bottom: 12px;
+          "
+        />
+        <div style="display: flex; gap: 6px">
+          <button id="btnMoverCancelar" class="link-btn" style="flex: 1">
+            Cancelar
+          </button>
+          <button
+            id="btnMoverContinuar"
+            class="link-btn"
+            style="flex: 1; font-weight: 600"
+          >
+            Continuar
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- CAIXA DE CONFIRMAÇÃO DIÁLOGOS CUSTOMIZADOS
+         Reaproveitada para: excluir item, limpar selecionadas, apagar tudo,
+         e agora também confirmar o Transporte de Tarefas (item 3) — em vez
+         de criar um segundo par Confirmar/Cancelar redundante, a mesma
+         pergunta Sim/Não cobre "Mover N tarefa(s) para [data]?". -->
     <div
       id="confirmOverlay"
       class="modal-overlay"
@@ -580,11 +794,10 @@
       </div>
     </div>
 
-    <!-- Antes carregava de um CDN (https://cdn.jsdelivr.net/...), o que
-         quebrava a exportação XLSX sem internet — incoerente com um app
-         que se descreve como offline. "xlsx" já era dependência real no
-         package.json; agora usa a cópia local instalada em node_modules. -->
-    <script src="node_modules/xlsx/dist/xlsx.full.min.js"></script>
+    <!-- A geração do XLSX foi movida para o main.js (require('xlsx') no
+         processo principal, que já tem a lib como dependency real). O
+         renderer não precisa mais carregar a biblioteca — nem via CDN
+         (quebrava offline) nem via cópia local em <script>. -->
     <script src="renderer.js"></script>
   </body>
 </html>

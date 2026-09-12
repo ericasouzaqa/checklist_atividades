@@ -918,6 +918,262 @@ function setupExportLogic() {
   }
 }
 
+// ==========================================
+// PALETA DERIVADA — geração automática de todos os papéis de cor a
+// partir da ÚNICA cor escolhida pela usuária (--note-bg), com contraste
+// garantido (WCAG AA) para qualquer tom, não só para o tema padrão.
+//
+// Antes, cada papel (--palette-accent, --palette-border-strong, etc.)
+// era calculado direto no CSS via color-mix() com uma proporção fixa
+// (ex.: 45% base + 55% texto). Isso funciona bem para alguns tons, mas
+// não garante nada: dependendo da cor escolhida, o resultado podia cair
+// abaixo do mínimo de contraste — foi exatamente o que aconteceu com o
+// botão primário no tema padrão "Amarelo Post-it" (4.23:1, abaixo do
+// 4.5:1 exigido). color-mix() no CSS não tem como "testar e corrigir";
+// só sabe misturar. Por isso a geração migrou pra cá: em JS dá pra
+// calcular a razão de contraste real (fórmula WCAG) e ajustar a
+// luminosidade da cor até o mínimo ser atingido, sem depender de sorte.
+// ==========================================
+
+function hexParaRgb(hex) {
+  const num = parseInt(hex.replace('#', ''), 16);
+  return { r: (num >> 16) & 255, g: (num >> 8) & 255, b: num & 255 };
+}
+
+function rgbParaHex({ r, g, b }) {
+  const canal = (v) =>
+    Math.max(0, Math.min(255, Math.round(v)))
+      .toString(16)
+      .padStart(2, '0');
+  return '#' + canal(r) + canal(g) + canal(b);
+}
+
+// Mesma lógica do color-mix(in srgb, A p%, B (100-p)%) que já era usada
+// no style.css — interpolação linear direta por canal, sem correção de
+// gama. Mantido idêntico para os papéis que só migraram de CSS pra JS,
+// pra não mudar a aparência do que já funcionava.
+function misturarRgb(a, b, pesoA) {
+  return {
+    r: a.r * pesoA + b.r * (1 - pesoA),
+    g: a.g * pesoA + b.g * (1 - pesoA),
+    b: a.b * pesoA + b.b * (1 - pesoA),
+  };
+}
+
+// Luminância relativa oficial do WCAG 2.x — não confundir com o YIQ
+// (usado só para a decisão rápida preto/branco do texto principal).
+// É a base da fórmula de razão de contraste abaixo.
+function luminanciaRelativa({ r, g, b }) {
+  const canal = (c) => {
+    const s = c / 255;
+    return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+  };
+  return 0.2126 * canal(r) + 0.7152 * canal(g) + 0.0722 * canal(b);
+}
+
+function razaoContraste(rgbA, rgbB) {
+  const l1 = luminanciaRelativa(rgbA);
+  const l2 = luminanciaRelativa(rgbB);
+  const claro = Math.max(l1, l2);
+  const escuro = Math.min(l1, l2);
+  return (claro + 0.05) / (escuro + 0.05);
+}
+
+function rgbParaHsl({ r, g, b }) {
+  r /= 255;
+  g /= 255;
+  b /= 255;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  let h = 0;
+  let s = 0;
+  const l = (max + min) / 2;
+  if (max !== min) {
+    const d = max - min;
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    switch (max) {
+      case r:
+        h = (g - b) / d + (g < b ? 6 : 0);
+        break;
+      case g:
+        h = (b - r) / d + 2;
+        break;
+      default:
+        h = (r - g) / d + 4;
+    }
+    h /= 6;
+  }
+  return { h, s, l };
+}
+
+function hslParaRgb({ h, s, l }) {
+  if (s === 0) {
+    const v = l * 255;
+    return { r: v, g: v, b: v };
+  }
+  const hue2rgb = (p, q, t) => {
+    if (t < 0) t += 1;
+    if (t > 1) t -= 1;
+    if (t < 1 / 6) return p + (q - p) * 6 * t;
+    if (t < 1 / 2) return q;
+    if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+    return p;
+  };
+  const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+  const p = 2 * l - q;
+  return {
+    r: hue2rgb(p, q, h + 1 / 3) * 255,
+    g: hue2rgb(p, q, h) * 255,
+    b: hue2rgb(p, q, h - 1 / 3) * 255,
+  };
+}
+
+// Empurra a luminosidade de rgbCor pra longe de rgbReferencia, em
+// pequenos passos, até bater o mínimo de contraste entre as duas —
+// ou até a luminosidade encostar no teto/piso (cor "impossível" de
+// acertar só ajustando L; devolve o melhor resultado encontrado em vez
+// de girar num loop infinito ou virar preto/branco puro).
+function ajustarContrasteContra(rgbCor, rgbReferencia, minimo) {
+  let atual = rgbCor;
+  let razao = razaoContraste(atual, rgbReferencia);
+  if (razao >= minimo) return atual;
+
+  let hsl = rgbParaHsl(rgbCor);
+  const luminanciaRef = luminanciaRelativa(rgbReferencia);
+  const passo = luminanciaRef > 0.5 ? -0.03 : 0.03;
+
+  let tentativas = 0;
+  while (razao < minimo && tentativas < 24) {
+    const novoL = hsl.l + passo;
+    if (novoL <= 0.04 || novoL >= 0.96) break;
+    hsl = { ...hsl, l: novoL };
+    atual = hslParaRgb(hsl);
+    razao = razaoContraste(atual, rgbReferencia);
+    tentativas++;
+  }
+  return atual;
+}
+
+// Igual em espírito ao anterior, mas para cores cujo texto por cima
+// ainda não foi decidido (ex.: o botão principal) — testa preto e
+// branco quase-puros a cada passo e ajusta na direção do que já está
+// vencendo, até alcançar o mínimo (AA = 4.5:1 para texto normal).
+function garantirContrasteAA(rgbBase, minimo) {
+  const pretoTexto = { r: 26, g: 26, b: 26 };
+  const brancoTexto = { r: 255, g: 255, b: 255 };
+
+  let hsl = rgbParaHsl(rgbBase);
+  let atual = rgbBase;
+  const melhorTextoPara = (cor) =>
+    razaoContraste(cor, pretoTexto) >= razaoContraste(cor, brancoTexto)
+      ? pretoTexto
+      : brancoTexto;
+
+  let textoEscolhido = melhorTextoPara(atual);
+  let razao = razaoContraste(atual, textoEscolhido);
+
+  let tentativas = 0;
+  while (razao < minimo && tentativas < 24) {
+    // Texto branco vencendo → fundo precisa escurecer. Texto preto
+    // vencendo → fundo precisa clarear.
+    const passo = textoEscolhido === brancoTexto ? -0.03 : 0.03;
+    const novoL = hsl.l + passo;
+    if (novoL <= 0.06 || novoL >= 0.94) break;
+    hsl = { ...hsl, l: novoL };
+    atual = hslParaRgb(hsl);
+    textoEscolhido = melhorTextoPara(atual);
+    razao = razaoContraste(atual, textoEscolhido);
+    tentativas++;
+  }
+  return { cor: atual, texto: textoEscolhido };
+}
+
+// Monta os 8 papéis de cor (texto, borda, superfície, card, hover,
+// principal, secundária, destaque) a partir da única cor de base.
+function gerarPaleta(hex) {
+  const base = hexParaRgb(hex);
+  const yiq = (base.r * 299 + base.g * 587 + base.b * 114) / 1000;
+  const claro = yiq >= 128;
+  const texto = claro ? { r: 26, g: 26, b: 26 } : { r: 255, g: 255, b: 255 };
+
+  // Papéis que já existiam — mesma fórmula/proporção de antes, só
+  // centralizada aqui junto com o resto da paleta.
+  const subTexto = claro ? { r: 85, g: 85, b: 85 } : { r: 208, g: 208, b: 208 };
+  const bordaAlpha = claro ? 'rgba(0,0,0,0.12)' : 'rgba(255,255,255,0.18)';
+  const cardAlpha = claro ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.25)';
+  const cardHoverAlpha = claro ? 'rgba(255,255,255,0.65)' : 'rgba(0,0,0,0.4)';
+  const modalSolido = claro
+    ? { r: 255, g: 255, b: 255 }
+    : { r: 30, g: 30, b: 30 };
+  const inputBgAlpha = claro ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.06)';
+
+  // Superfície (topbar / rodapé / barra de seleção) — um tom a mais de
+  // profundidade que os cards, misturando base + texto.
+  const superficie = misturarRgb(base, texto, 0.84);
+
+  // Principal: mesmo ponto de partida de antes (45% base + 55% texto),
+  // mas agora com o par de texto escolhido e a luminosidade ajustada
+  // até garantir AA 4.5:1 — corrige o contraste insuficiente do botão
+  // primário relatado na auditoria, em qualquer cor escolhida.
+  const principalCru = misturarRgb(base, texto, 0.45);
+  const { cor: principal, texto: principalTexto } = garantirContrasteAA(
+    principalCru,
+    4.5
+  );
+
+  // Hover do principal: desloca a luminosidade mais um pouco no sentido
+  // oposto ao texto escolhido (clareia se o texto é branco, escurece se
+  // é preto) — dá feedback visível de hover sem arriscar derrubar o
+  // contraste já garantido acima.
+  const principalHsl = rgbParaHsl(principal);
+  const direcaoHover = principalTexto.r === 255 ? 0.1 : -0.1;
+  const principalHover = hslParaRgb({
+    ...principalHsl,
+    l: Math.max(0.05, Math.min(0.95, principalHsl.l + direcaoHover)),
+  });
+
+  // Secundária (ações de segundo nível — "Exportar CSV", "Não"): mistura
+  // mais leve que a principal, próxima da superfície mas com identidade
+  // própria, também garantida contra o --text-color global (que é quem
+  // fica escrito por cima dela).
+  const secundariaCrua = misturarRgb(base, texto, 0.72);
+  const secundaria = ajustarContrasteContra(secundariaCrua, texto, 4.5);
+
+  // Destaque (foco de campos, seleção, links): mesma luminosidade/
+  // saturação do principal, com o matiz girado ~150° — fica claramente
+  // diferente da cor de ação primária sem depender de uma segunda cor
+  // escolhida manualmente. Ajustada para permanecer visível (3:1, o
+  // mínimo AA para elementos gráficos/bordas) sobre a superfície.
+  const destaqueHsl = rgbParaHsl(principal);
+  const destaqueCru = hslParaRgb({
+    ...destaqueHsl,
+    h: (destaqueHsl.h + 150 / 360) % 1,
+  });
+  const destaque = ajustarContrasteContra(destaqueCru, superficie, 3);
+
+  return {
+    texto: rgbParaHex(texto),
+    subTexto: rgbParaHex(subTexto),
+    bordaAlpha,
+    cardAlpha,
+    cardHoverAlpha,
+    modalSolido: rgbParaHex(modalSolido),
+    inputBgAlpha,
+    superficie: rgbParaHex(superficie),
+    principal: rgbParaHex(principal),
+    principalHover: rgbParaHex(principalHover),
+    principalTexto: rgbParaHex(principalTexto),
+    secundaria: rgbParaHex(secundaria),
+    destaque: rgbParaHex(destaque),
+    // "R, G, B" cru (sem rgb()/rgba() em volta) para as texturas Mármore
+    // e Glitter montarem rgba(var(--textura-overlay-rgb), alpha) no CSS
+    // — é o mesmo texto.r/g/b já escolhido por contraste (YIQ) acima,
+    // então a sobreposição das texturas acompanha automaticamente o
+    // brilho do tema, em vez de usar preto ou branco fixos.
+    overlayRgb: `${Math.round(texto.r)}, ${Math.round(texto.g)}, ${Math.round(texto.b)}`,
+  };
+}
+
 function applyColorAndTexture(hex, textura, save) {
   if (!hex || hex === 'undefined') hex = '#FFF3B0';
   if (!textura) textura = 'none';
@@ -925,92 +1181,96 @@ function applyColorAndTexture(hex, textura, save) {
   // a cor e a textura são propriedades do DOM (CSS vars) e devem ser
   // aplicadas independentemente do estado do banco. Só o bloco "save"
   // precisa do dado da data — e é guardado pelo próprio if (save) abaixo.
-  if (save && (!bancoDadosGeral || !bancoDadosGeral[dataAtualSelecionada])) return;
-
-  const num = parseInt(hex.replace('#', ''), 16);
-  let r = (num >> 16) & 255;
-  let g = (num >> 8) & 255;
-  let b = num & 255;
+  if (save && (!bancoDadosGeral || !bancoDadosGeral[dataAtualSelecionada]))
+    return;
 
   document.documentElement.style.setProperty('--note-bg', hex);
 
-  const yiq = (r * 299 + g * 587 + b * 114) / 1000;
-  const corTextoDefinitiva = yiq >= 128 ? '#1A1A1A' : '#FFFFFF';
-  const corSubTextoDefinitiva = yiq >= 128 ? '#555555' : '#D0D0D0';
-  const corBordaDefinitiva =
-    yiq >= 128 ? 'rgba(0,0,0,0.12)' : 'rgba(255,255,255,0.18)';
-  const corCardDefinitiva =
-    yiq >= 128 ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.25)';
-  const corCardHoverDefinitiva =
-    yiq >= 128 ? 'rgba(255,255,255,0.65)' : 'rgba(0,0,0,0.4)';
-  const corModalDefinitiva = yiq >= 128 ? '#FFFFFF' : '#1E1E1E';
-  const corInputBgDefinitiva =
-    yiq >= 128 ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.06)';
+  const paleta = gerarPaleta(hex);
 
-  document.documentElement.style.setProperty(
-    '--text-color',
-    corTextoDefinitiva
-  );
+  document.documentElement.style.setProperty('--text-color', paleta.texto);
   document.documentElement.style.setProperty(
     '--sub-text-color',
-    corSubTextoDefinitiva
+    paleta.subTexto
   );
   document.documentElement.style.setProperty(
     '--border-alpha',
-    corBordaDefinitiva
+    paleta.bordaAlpha
   );
-  document.documentElement.style.setProperty('--bg-alpha', corCardDefinitiva);
+  document.documentElement.style.setProperty('--bg-alpha', paleta.cardAlpha);
   document.documentElement.style.setProperty(
     '--bg-hover-alpha',
-    corCardHoverDefinitiva
+    paleta.cardHoverAlpha
   );
-  document.documentElement.style.setProperty('--modal-bg', corModalDefinitiva);
+  document.documentElement.style.setProperty('--modal-bg', paleta.modalSolido);
   document.documentElement.style.setProperty(
     '--input-bg-alpha',
-    corInputBgDefinitiva
+    paleta.inputBgAlpha
+  );
+
+  // Papéis novos/recalculados da paleta derivada — ver gerarPaleta().
+  // Setados via inline style em :root, por isso sempre vencem os
+  // fallbacks em color-mix() que ficam no style.css (que só valem no
+  // instante antes desta função rodar pela primeira vez).
+  document.documentElement.style.setProperty(
+    '--palette-surface-2',
+    paleta.superficie
+  );
+  document.documentElement.style.setProperty(
+    '--palette-accent',
+    paleta.principal
+  );
+  document.documentElement.style.setProperty(
+    '--palette-accent-hover',
+    paleta.principalHover
+  );
+  document.documentElement.style.setProperty(
+    '--palette-accent-text',
+    paleta.principalTexto
+  );
+  document.documentElement.style.setProperty(
+    '--palette-secundaria',
+    paleta.secundaria
+  );
+  document.documentElement.style.setProperty(
+    '--palette-border-strong',
+    paleta.destaque
+  );
+  document.documentElement.style.setProperty(
+    '--textura-overlay-rgb',
+    paleta.overlayRgb
   );
 
   // Antes de aplicar a textura nova, limpa qualquer resíduo da textura
   // anterior. Sem isso, --neon-glow ou --gradiente-bg ficavam "grudados"
   // para sempre depois de usados uma vez, mesmo trocando para outro
   // tema/textura depois (nenhum código aqui nunca chamava
-  // removeProperty()).
-  document.documentElement.style.removeProperty('--textura-ativa');
+  // removeProperty()). O mesmo vale agora para as classes de textura no
+  // body: glass/mármore/glitter deixaram de ser aplicadas via
+  // document.body.style direto (que só consegue mexer em UMA
+  // propriedade por vez e não tinha como reagir ao tema) e passaram a
+  // ser classes CSS, então a limpeza também precisa remover a classe
+  // anterior antes de aplicar a nova.
   document.documentElement.style.removeProperty('--neon-glow');
   document.documentElement.style.removeProperty('--gradiente-bg');
+  document.body.classList.remove(
+    'textura-glass',
+    'textura-marmore',
+    'textura-glitter'
+  );
 
-  // Texturas glass, mármore e glitter precisam de múltiplas propriedades CSS
-  // ao mesmo tempo — o que é impossível via var() (var() só substitui o valor
-  // de UMA propriedade). A solução correta é aplicar as propriedades
-  // diretamente no elemento via style, usando uma classe auxiliar no body
-  // para as que dependem de backgroundImage (sobreposta ao --gradiente-bg).
-  document.body.style.backdropFilter = '';
-  document.body.style.backgroundImage = '';
-  document.body.style.backgroundSize = '';
-
-  if (textura === 'glass') {
-    document.body.style.backdropFilter = 'blur(16px) saturate(120%)';
-    document.body.style.backgroundImage =
-      'linear-gradient(rgba(255,255,255,0.08), rgba(255,255,255,0.08))';
+  if (textura === 'glass' || textura === 'marmore' || textura === 'glitter') {
+    document.body.classList.add('textura-' + textura);
   } else if (textura === 'neon') {
     document.documentElement.style.setProperty(
       '--neon-glow',
       `0 0 20px ${hex}, inset 0 0 10px ${hex}`
     );
-  } else if (textura === 'marmore') {
-    document.body.style.backgroundImage =
-      'linear-gradient(to right, rgba(0,0,0,0.04) 1px, transparent 1px), ' +
-      'linear-gradient(to bottom, rgba(0,0,0,0.04) 1px, transparent 1px)';
-    document.body.style.backgroundSize = '20px 20px';
   } else if (textura === 'gradiente') {
     document.documentElement.style.setProperty(
       '--gradiente-bg',
       `linear-gradient(135deg, ${hex} 0%, rgba(26,26,26,0.85) 100%)`
     );
-  } else if (textura === 'glitter') {
-    document.body.style.backgroundImage =
-      'radial-gradient(circle, rgba(255,255,255,0.18) 1px, transparent 1px)';
-    document.body.style.backgroundSize = '8px 8px';
   }
 
   if (save) {

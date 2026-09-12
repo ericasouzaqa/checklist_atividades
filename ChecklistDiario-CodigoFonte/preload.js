@@ -7,9 +7,14 @@ contextBridge.exposeInMainWorld('api', {
   minimize: () => ipcRenderer.invoke('minimize'),
   closeApp: () => ipcRenderer.invoke('close-app'),
   exportCsv: (content) => ipcRenderer.invoke('export-csv', content),
-  exportXlsx: (buffer) => ipcRenderer.invoke('export-xlsx', buffer),
+  // Substitui exportXlsx (aba única). Recebe { "Mes_Ano": [linhas...] }.
+  exportXlsxMulti: (dadosPorMes) =>
+    ipcRenderer.invoke('export-xlsx-multi', dadosPorMes),
   toggleAutostart: (enable) => ipcRenderer.invoke('toggle-autostart', enable),
   getAutostart: () => ipcRenderer.invoke('get-autostart'),
+
+  // Requisito 12 (Links): abre URL no navegador padrão do sistema.
+  openExternal: (url) => ipcRenderer.invoke('open-external', url),
 
   onCloseRequested: (callback) =>
     ipcRenderer.on('app-close-requested', () => callback()),
