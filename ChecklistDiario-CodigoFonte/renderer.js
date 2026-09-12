@@ -113,6 +113,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   setupTooltips();
   setupLixeira();
   setupTransporte();
+  setupLinksExternos();
 
   if (window.api && typeof window.api.onCloseRequested === 'function') {
     window.api.onCloseRequested(async () => {
@@ -534,7 +535,13 @@ function render() {
   chavesParaRenderizar.sort().forEach((chaveData) => {
     if (!bancoDadosGeral[chaveData] || !bancoDadosGeral[chaveData].items)
       return;
-    const ativos = bancoDadosGeral[chaveData].items.filter((i) => !i.excluida);
+    // Corrige item 4: tarefas concluídas descem para depois das pendentes,
+    // sempre abaixo da última concluída. O sort é estável (garantido pelo
+    // motor JS do Electron), então a ordem dentro de cada grupo — pendentes
+    // entre si, concluídas entre si — não muda, só o agrupamento.
+    const ativos = bancoDadosGeral[chaveData].items
+      .filter((i) => !i.excluida)
+      .sort((a, b) => (a.done === b.done ? 0 : a.done ? 1 : -1));
     if (ativos.length === 0) return;
 
     // No filtro "Hoje" a data já aparece em #dateLabel, logo acima da
@@ -633,6 +640,22 @@ function render() {
       const txt = document.createElement('div');
       txt.className = 'item-text';
       txt.textContent = item.text;
+
+      // Item 5: "Mostrar observação como subtítulo" — reaproveita o
+      // mesmo HTML rico editado no modal (negrito, links, imagens etc.).
+      if (
+        item.observacaoComoSubtitulo &&
+        (item.observacoesHtml || item.observacoes)
+      ) {
+        const subtitulo = document.createElement('div');
+        subtitulo.className = 'item-subtitulo';
+        subtitulo.style.cssText =
+          'font-size:11px;color:var(--sub-text-color, rgba(0,0,0,0.55));' +
+          'margin-top:2px;line-height:1.3;word-break:break-word;';
+        subtitulo.innerHTML =
+          item.observacoesHtml || escapeHtml(item.observacoes);
+        txt.appendChild(subtitulo);
+      }
 
       const editBtn = document.createElement('button');
       editBtn.className = 'edit-btn';
@@ -1450,8 +1473,19 @@ function abrirModalEdicaoTarefa(chaveData, idxReal) {
 
   const it = document.getElementById('inputEditarTitulo');
   if (it) it.value = item.text;
+
   const io = document.getElementById('inputEditarObservacoes');
-  if (io) io.value = item.observacoes || '';
+  if (io) {
+    // Compatibilidade: tarefas criadas antes desta versão só têm
+    // "observacoes" (texto puro). Tarefas editadas no editor rico novo
+    // usam "observacoesHtml".
+    io.innerHTML = item.observacoesHtml || escapeHtml(item.observacoes || '');
+  }
+
+  const chkSubtitulo = document.getElementById('chkObsComoSubtitulo');
+  if (chkSubtitulo) chkSubtitulo.checked = !!item.observacaoComoSubtitulo;
+
+  fecharPainelLinkObs();
 
   modalEdicao.classList.remove('hidden');
   modalEdicao.classList.add('open');
@@ -1475,14 +1509,234 @@ function abrirModalEdicaoTarefa(chaveData, idxReal) {
       .getElementById('inputEditarTitulo')
       .value.trim();
     if (!novoTitulo) return;
+    const obsDiv = document.getElementById('inputEditarObservacoes');
+
     bancoDadosGeral[chaveData].items[idxReal].text = novoTitulo;
-    bancoDadosGeral[chaveData].items[idxReal].observacoes = document
-      .getElementById('inputEditarObservacoes')
-      .value.trim();
+    bancoDadosGeral[chaveData].items[idxReal].observacoesHtml = obsDiv
+      ? sanitizarHtmlObservacao(obsDiv.innerHTML)
+      : '';
+    // Mantém "observacoes" como espelho em texto puro — é o campo que a
+    // exportação CSV/XLSX já usa, então continua funcionando sem tocar
+    // nela.
+    bancoDadosGeral[chaveData].items[idxReal].observacoes = obsDiv
+      ? obsDiv.textContent.trim()
+      : '';
+    bancoDadosGeral[chaveData].items[idxReal].observacaoComoSubtitulo =
+      !!document.getElementById('chkObsComoSubtitulo')?.checked;
+
     modalEdicao.classList.add('hidden');
     modalEdicao.classList.remove('open');
     persist();
     render();
+  });
+}
+
+// ==========================================
+// SUPORTE AO EDITOR RICO DE OBSERVAÇÕES (item 5)
+// ==========================================
+
+function escapeHtml(texto) {
+  const div = document.createElement('div');
+  div.textContent = texto;
+  return div.innerHTML;
+}
+
+// Sanitização mínima do HTML gerado no editor: remove tags perigosas,
+// atributos on* e hrefs/srcs "javascript:". Suficiente para um editor
+// que só produz HTML via execCommand/insertHTML controlado por nós
+// mesmos, sem aceitar colagem de HTML arbitrário de fora.
+function sanitizarHtmlObservacao(html) {
+  const temp = document.createElement('div');
+  temp.innerHTML = html;
+  temp.querySelectorAll('script, style, iframe, object, embed').forEach(
+    (el) => el.remove()
+  );
+  temp.querySelectorAll('*').forEach((el) => {
+    [...el.attributes].forEach((attr) => {
+      const nome = attr.name.toLowerCase();
+      if (nome.startsWith('on')) {
+        el.removeAttribute(attr.name);
+      } else if (
+        (nome === 'href' || nome === 'src') &&
+        /^\s*javascript:/i.test(attr.value)
+      ) {
+        el.removeAttribute(attr.name);
+      }
+    });
+  });
+  return temp.innerHTML;
+}
+
+let obsSelecaoSalva = null;
+
+// document.execCommand precisa da seleção original do editor. Botões
+// nativos (input color, input file) roubam o foco antes de rodar o
+// comando, então a seleção é salva a cada mudança dentro do editor e
+// restaurada logo antes de executar o comando.
+function salvarSelecaoObs() {
+  const obsDiv = document.getElementById('inputEditarObservacoes');
+  const sel = window.getSelection();
+  if (obsDiv && sel && sel.rangeCount > 0 && obsDiv.contains(sel.anchorNode)) {
+    obsSelecaoSalva = sel.getRangeAt(0).cloneRange();
+  }
+}
+
+function restaurarSelecaoObs() {
+  const obsDiv = document.getElementById('inputEditarObservacoes');
+  if (!obsDiv) return;
+  obsDiv.focus();
+  if (obsSelecaoSalva) {
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(obsSelecaoSalva);
+  }
+}
+
+function fecharPainelLinkObs() {
+  const painel = document.getElementById('painelLinkObs');
+  if (painel) painel.classList.add('hidden');
+  const inputUrl = document.getElementById('inputLinkObsUrl');
+  if (inputUrl) inputUrl.value = '';
+}
+
+function configurarToolbarObservacoes(escopo) {
+  const obsDiv = escopo.querySelector('#inputEditarObservacoes');
+  if (obsDiv) {
+    obsDiv.addEventListener('mouseup', salvarSelecaoObs);
+    obsDiv.addEventListener('keyup', salvarSelecaoObs);
+  }
+
+  // Negrito / Itálico / Tachado / Lista: mousedown com preventDefault
+  // evita que o clique no botão tire o foco do editor ANTES do
+  // execCommand rodar (sem isso a seleção se perde e o comando não faz
+  // nada).
+  escopo.querySelectorAll('.obs-tb-btn[data-cmd]').forEach((btn) => {
+    btn.addEventListener('mousedown', (e) => e.preventDefault());
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      obsDiv?.focus();
+      document.execCommand(btn.dataset.cmd, false, null);
+    });
+  });
+
+  // Cor do texto.
+  const corInput = escopo.querySelector('#inputCorObs');
+  if (corInput) {
+    corInput.addEventListener('mousedown', salvarSelecaoObs);
+    corInput.addEventListener('input', (e) => {
+      restaurarSelecaoObs();
+      document.execCommand('foreColor', false, e.target.value);
+    });
+  }
+
+  // Link: window.prompt() não é suportado no processo de renderização
+  // do Electron, então usamos um mini-painel inline com campo de URL.
+  const btnLink = escopo.querySelector('#btnObsLink');
+  const painelLink = escopo.querySelector('#painelLinkObs');
+  const inputLinkUrl = escopo.querySelector('#inputLinkObsUrl');
+  const btnConfirmarLink = escopo.querySelector('#btnConfirmarLinkObs');
+  if (btnLink && painelLink) {
+    btnLink.addEventListener('mousedown', (e) => e.preventDefault());
+    btnLink.addEventListener('click', (e) => {
+      e.stopPropagation();
+      salvarSelecaoObs();
+      painelLink.classList.toggle('hidden');
+      if (!painelLink.classList.contains('hidden')) inputLinkUrl?.focus();
+    });
+  }
+  if (btnConfirmarLink) {
+    btnConfirmarLink.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const url = inputLinkUrl?.value.trim();
+      if (!url) return;
+      const urlValida = /^https?:\/\//i.test(url) ? url : `https://${url}`;
+      restaurarSelecaoObs();
+      if (window.getSelection().isCollapsed) {
+        // Sem texto selecionado: cria o link mostrando a própria URL.
+        document.execCommand(
+          'insertHTML',
+          false,
+          `<a href="${urlValida}">${escapeHtml(urlValida)}</a>&nbsp;`
+        );
+      } else {
+        document.execCommand('createLink', false, urlValida);
+      }
+      fecharPainelLinkObs();
+    });
+  }
+
+  // Imagem/GIF: <input type="file"> nativo, lido como base64 e inserido
+  // direto no HTML da observação — não depende do processo principal.
+  const btnImagem = escopo.querySelector('#btnObsImagem');
+  const fileImagem = escopo.querySelector('#fileObsImagem');
+  if (btnImagem && fileImagem) {
+    btnImagem.addEventListener('mousedown', salvarSelecaoObs);
+    btnImagem.addEventListener('click', (e) => {
+      e.stopPropagation();
+      fileImagem.click();
+    });
+    fileImagem.addEventListener('change', () => {
+      const arquivo = fileImagem.files?.[0];
+      if (!arquivo) return;
+      const leitor = new FileReader();
+      leitor.onload = () => {
+        restaurarSelecaoObs();
+        document.execCommand(
+          'insertHTML',
+          false,
+          `<img src="${leitor.result}" style="max-width:100%;border-radius:6px;margin:4px 0;display:block;" />`
+        );
+        fileImagem.value = '';
+      };
+      leitor.readAsDataURL(arquivo);
+    });
+  }
+
+  // PDF: mesmo princípio, mas vira um link de download em base64 — não
+  // faz sentido tentar renderizar o PDF inteiro dentro do card.
+  const btnPdf = escopo.querySelector('#btnObsPdf');
+  const filePdf = escopo.querySelector('#fileObsPdf');
+  if (btnPdf && filePdf) {
+    btnPdf.addEventListener('mousedown', salvarSelecaoObs);
+    btnPdf.addEventListener('click', (e) => {
+      e.stopPropagation();
+      filePdf.click();
+    });
+    filePdf.addEventListener('change', () => {
+      const arquivo = filePdf.files?.[0];
+      if (!arquivo) return;
+      const leitor = new FileReader();
+      leitor.onload = () => {
+        restaurarSelecaoObs();
+        document.execCommand(
+          'insertHTML',
+          false,
+          `<a href="${leitor.result}" download="${escapeHtml(
+            arquivo.name
+          )}">📄 ${escapeHtml(arquivo.name)}</a>&nbsp;`
+        );
+        filePdf.value = '';
+      };
+      leitor.readAsDataURL(arquivo);
+    });
+  }
+}
+
+// Delegação global: qualquer link http(s) dentro da checklist principal
+// (título ou subtítulo/observação) abre no navegador padrão do sistema
+// via o canal já preparado no main.js/preload.js ("Requisito 12"), nunca
+// dentro do próprio app. Links de dados (imagem/PDF embutidos com
+// download) seguem o comportamento nativo do navegador e não passam por
+// aqui.
+function setupLinksExternos() {
+  document.addEventListener('click', (e) => {
+    const link = e.target.closest('#list a[href]');
+    if (!link) return;
+    const href = link.getAttribute('href') || '';
+    if (/^https?:\/\//i.test(href)) {
+      e.preventDefault();
+      window.api.openExternal(href);
+    }
   });
 }
 
@@ -1927,7 +2181,11 @@ function setupLixeira() {
   if (filtroSelect) {
     filtroSelect.addEventListener('change', () => {
       lixeiraFiltroAtual = filtroSelect.value;
-      lixeiraSelecionados.clear();
+      // Não zera lixeiraSelecionados aqui: o usuário pode marcar tarefas
+      // numa data, trocar o filtro pra outra data, marcar mais, e só
+      // depois clicar "Restaurar selecionadas" — a restauração em lote
+      // precisa funcionar através de múltiplas datas, não só dentro do
+      // filtro atualmente visível.
       renderLixeira();
     });
   }
@@ -2040,12 +2298,53 @@ function criarEstruturaModalEdicao() {
   novaDiv.id = 'modalEdicaoTarefaOverlay';
   novaDiv.className = 'modal-overlay hidden';
   novaDiv.innerHTML = `
-    <div class="modal-content">
+    <div class="modal-content" style="max-width: 340px;">
       <h3>✏️ Editar Tarefa</h3>
       <label>Título</label>
       <input type="text" id="inputEditarTitulo" />
-      <label>Observações</label>
-      <textarea id="inputEditarObservacoes"></textarea>
+
+      <label style="margin-top: 8px; display: block;">Observações</label>
+      <div id="obsToolbar" style="display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0;">
+        <button type="button" data-cmd="bold" class="link-btn obs-tb-btn" style="font-weight: 700;">B</button>
+        <button type="button" data-cmd="italic" class="link-btn obs-tb-btn" style="font-style: italic;">I</button>
+        <button type="button" data-cmd="strikeThrough" class="link-btn obs-tb-btn" style="text-decoration: line-through;">S</button>
+        <button type="button" data-cmd="insertUnorderedList" class="link-btn obs-tb-btn">• Lista</button>
+        <input type="color" id="inputCorObs" title="Cor do texto" style="width: 26px; height: 26px; padding: 0; border: none; cursor: pointer;" />
+        <button type="button" id="btnObsLink" class="link-btn obs-tb-btn">🔗 Link</button>
+        <button type="button" id="btnObsImagem" class="link-btn obs-tb-btn">🖼️ Imagem/GIF</button>
+        <button type="button" id="btnObsPdf" class="link-btn obs-tb-btn">📄 PDF</button>
+      </div>
+
+      <div id="painelLinkObs" class="hidden" style="display: flex; gap: 4px; margin-bottom: 6px;">
+        <input type="text" id="inputLinkObsUrl" placeholder="https://..." style="flex: 1;" />
+        <button type="button" id="btnConfirmarLinkObs" class="link-btn" style="flex: 0 0 auto;">OK</button>
+      </div>
+
+      <div
+        id="inputEditarObservacoes"
+        contenteditable="true"
+        style="
+          min-height: 80px;
+          max-height: 180px;
+          overflow-y: auto;
+          border: 1px solid var(--border-alpha);
+          border-radius: var(--radius-sm);
+          padding: 6px;
+          background: var(--input-bg-alpha);
+          color: var(--text-color);
+          font-size: 12px;
+          line-height: 1.4;
+        "
+      ></div>
+
+      <input type="file" id="fileObsImagem" accept="image/*" style="display: none;" />
+      <input type="file" id="fileObsPdf" accept="application/pdf" style="display: none;" />
+
+      <label style="display: flex; align-items: center; gap: 6px; margin-top: 10px; font-size: 11px; cursor: pointer;">
+        <input type="checkbox" id="chkObsComoSubtitulo" />
+        Mostrar observação como subtítulo na tela principal
+      </label>
+
       <div style="display: flex; gap: 6px; margin-top: 12px;">
         <button id="btnCancelarEdicaoTarefa" class="link-btn" style="flex: 1;">Cancelar</button>
         <button id="btnSalvarEdicaoTarefa" class="link-btn" style="flex: 1; font-weight: 600;">Salvar</button>
@@ -2053,5 +2352,6 @@ function criarEstruturaModalEdicao() {
     </div>
   `;
   document.body.appendChild(novaDiv);
+  configurarToolbarObservacoes(novaDiv);
   return novaDiv;
 }

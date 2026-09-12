@@ -1031,6 +1031,13 @@ input[type='date']::-webkit-calendar-picker-indicator:hover {
   margin-bottom: 8px !important;
   flex-shrink: 0 !important;
 }
+/* Corrige o item 1/2 do escopo: sem esta regra mais específica, o
+   display:flex acima empata em especificidade com .hidden (mesma
+   especificidade, ambos !important) e vence por vir depois no arquivo —
+   a barra de seleção nunca fica realmente oculta. */
+.selecao-bar.hidden {
+  display: none !important;
+}
 #selecaoContagem {
   font-size: 11px !important;
   font-weight: 600 !important;
