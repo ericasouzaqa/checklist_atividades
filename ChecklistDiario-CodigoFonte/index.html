@@ -111,21 +111,32 @@
            quando o modo de seleção é ativado por qualquer um dos 3 gatilhos
            (botão Mover, Ctrl+clique, ou "Mover para..." do menu de contexto). -->
       <div id="selecaoBar" class="selecao-bar hidden">
-        <span id="selecaoContagem">0 selecionada(s)</span>
+        <div class="selecao-bar-top">
+          <label class="selecao-bar-tudo-label">
+            <input
+              type="checkbox"
+              id="chkSelecionarTodasTransporte"
+              class="item-select-checkbox"
+              data-tooltip="Marca para mover todas as tarefas visíveis, sem alterar status ou progresso"
+            />
+            Selecionar todas
+          </label>
+          <span id="selecaoContagem">0 tarefa(s) selecionada(s)</span>
+        </div>
         <div class="selecao-bar-actions">
           <button
             id="btnMoverSelecionadas"
             class="link-btn selecao-bar-btn"
             data-tooltip="Escolher a data de destino"
           >
-            Mover
+            ✅ Confirmar
           </button>
           <button
             id="btnCancelarSelecao"
             class="link-btn selecao-bar-btn"
             data-tooltip="Sair do modo de seleção"
           >
-            Cancelar
+            ❌ Cancelar
           </button>
         </div>
       </div>
@@ -148,7 +159,7 @@
         <button
           class="link-btn"
           id="moveBtn"
-          data-tooltip="Selecionar tarefas pendentes para mover para outro dia"
+          data-tooltip="Selecionar tarefas para mover para outro dia"
         >
           🔀 Mover
         </button>

@@ -581,58 +581,41 @@ function render() {
       }
 
       const chaveTransporte = chaveData + '|' + idxReal;
-      // O Transporte move tarefas PENDENTES para outro dia (mover uma
-      // tarefa já concluída não faz sentido de produto) — mantém coerência
-      // com o tooltip do botão "Mover" no rodapé.
-      const podeTransportar = !item.done;
+      // Mover para outra data não depende do status da tarefa — tarefas
+      // concluídas também podem ser movidas, então nenhuma tarefa fica de
+      // fora dos gatilhos de seleção abaixo.
 
-      if (podeTransportar) {
-        // Gatilho 2 do Transporte (Ctrl/Cmd+clique) e seleção por clique
-        // simples quando o modo já está ativo ("Selecionar individualmente").
-        row.addEventListener('click', (e) => {
-          if (e.target.closest('input, button, a')) return;
-          if (e.ctrlKey || e.metaKey) {
-            e.preventDefault();
-            if (!modoSelecaoAtivo) ativarModoSelecaoTransporte();
-            toggleSelecaoTransporte(chaveTransporte);
-            render();
-            return;
-          }
-          if (modoSelecaoAtivo) {
-            toggleSelecaoTransporte(chaveTransporte);
-            render();
-          }
-        });
-
-        // Gatilho 3 do Transporte: clique-direito abre "Mover para...".
-        row.addEventListener('contextmenu', (e) => {
+      // Gatilho 2 (Ctrl/Cmd+clique) e seleção por clique simples quando o
+      // modo já está ativo ("Selecionar individualmente").
+      row.addEventListener('click', (e) => {
+        if (e.target.closest('input, button, a')) return;
+        if (e.ctrlKey || e.metaKey) {
           e.preventDefault();
-          abrirMenuContexto(e.clientX, e.clientY, chaveTransporte);
-        });
-
-        if (modoSelecaoAtivo) {
-          row.classList.add('selecionavel');
-          const selectCb = document.createElement('input');
-          selectCb.type = 'checkbox';
-          selectCb.className = 'item-select-checkbox';
-          selectCb.checked = itensSelecionadosTransporte.has(chaveTransporte);
-          selectCb.setAttribute('data-tooltip', 'Selecionar para mover');
-          selectCb.addEventListener('change', (e) => {
-            e.stopPropagation();
-            toggleSelecaoTransporte(chaveTransporte);
-          });
-          row.appendChild(selectCb);
+          if (!modoSelecaoAtivo) ativarModoSelecaoTransporte();
+          toggleSelecaoTransporte(chaveTransporte);
+          render();
+          return;
         }
-      }
+        if (modoSelecaoAtivo) {
+          toggleSelecaoTransporte(chaveTransporte);
+          render();
+        }
+      });
+
+      // Gatilho 3: clique-direito abre "Mover para...".
+      row.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        abrirMenuContexto(e.clientX, e.clientY, chaveTransporte);
+      });
 
       const cb = document.createElement('input');
       cb.type = 'checkbox';
       cb.checked = item.done;
       cb.addEventListener('change', () => {
         bancoDadosGeral[chaveData].items[idxReal].done = cb.checked;
-        // Uma tarefa concluída sai automaticamente da seleção do
-        // Transporte (que só move tarefas pendentes).
-        if (cb.checked) itensSelecionadosTransporte.delete(chaveTransporte);
+        // A seleção para mover é independente do status de conclusão —
+        // marcar/desmarcar "concluída" nunca altera o que está selecionado
+        // para o Modo Movimentação.
         persist();
         render();
       });
@@ -691,10 +674,50 @@ function render() {
         );
       });
 
-      row.appendChild(cb);
-      row.appendChild(txt);
-      row.appendChild(editBtn);
-      row.appendChild(del);
+      // Todo o conteúdo do card (checkbox de concluída, título, subtítulo,
+      // links/observações/anexos embutidos no subtítulo, e as ações de
+      // editar/remover) fica numa linha própria — nada aqui é comprimido
+      // ou sobrescrito pelo checkbox de mover, que vem depois, abaixo.
+      const mainRow = document.createElement('div');
+      mainRow.className = 'item-main-row';
+      mainRow.appendChild(cb);
+      mainRow.appendChild(txt);
+      mainRow.appendChild(editBtn);
+      mainRow.appendChild(del);
+      row.appendChild(mainRow);
+
+      // Checkbox de "selecionar para mover": some/aparece só durante o
+      // Modo Movimentação. É totalmente independente do checkbox de
+      // concluída acima — não representa nem altera conclusão, progresso,
+      // status ou métricas; existe só para escolher quem vai ser movido.
+      // Por isso fica visualmente separado, numa linha abaixo de todo o
+      // conteúdo do card, nunca ao lado do checkbox de concluída.
+      if (modoSelecaoAtivo) {
+        row.classList.add('selecionavel');
+
+        const selectRow = document.createElement('div');
+        selectRow.className = 'item-select-row';
+        selectRow.addEventListener('click', (e) => {
+          e.stopPropagation();
+          toggleSelecaoTransporte(chaveTransporte);
+          render();
+        });
+
+        const selectCb = document.createElement('input');
+        selectCb.type = 'checkbox';
+        selectCb.className = 'item-select-checkbox';
+        selectCb.checked = itensSelecionadosTransporte.has(chaveTransporte);
+        selectCb.tabIndex = -1;
+
+        const selectLabel = document.createElement('span');
+        selectLabel.className = 'item-select-label';
+        selectLabel.textContent = 'Selecionar para mover';
+
+        selectRow.appendChild(selectCb);
+        selectRow.appendChild(selectLabel);
+        row.appendChild(selectRow);
+      }
+
       fragment.appendChild(row);
     });
   });
@@ -1741,12 +1764,15 @@ function setupLinksExternos() {
 }
 
 // ==========================================
-// TRANSPORTE DE TAREFAS (itens 3 e 4 da auditoria)
-// Fluxo: Selecionar -> Mover -> Escolher data -> Confirmar -> Mover,
-// preservando todos os dados do item (texto, status, hora de criação,
-// observações). 3 gatilhos entram no modo de seleção: botão "Mover" do
-// rodapé, Ctrl/Cmd+clique num item, e "Mover para..." no menu de
-// contexto (clique-direito).
+// MOVER TAREFAS PARA OUTRA DATA (itens 3 e 4 da auditoria)
+// Fluxo: Mover -> Modo Movimentação (barra com "Selecionar todas" e
+// contagem) -> Selecionar tarefas -> Confirmar -> Escolher data -> Modal
+// de confirmação -> Executar -> Persistir, preservando 100% dos dados do
+// item (texto, status, observações, links, anexos, hora de criação,
+// histórico). A seleção para mover é independente da seleção de
+// conclusão e funciona para tarefas concluídas ou pendentes. 3 gatilhos
+// entram no modo de seleção: botão "Mover" do rodapé, Ctrl/Cmd+clique num
+// item, e "Mover para..." no menu de contexto (clique-direito).
 // ==========================================
 
 function ativarModoSelecaoTransporte() {
@@ -1772,11 +1798,44 @@ function toggleSelecaoTransporte(chave) {
   atualizarContadorTransporte();
 }
 
-// Corrige o item 3 da auditoria (contador preso em "0 selecionada(s)").
+// Todas as chaves "chaveData|idx" das tarefas ativas (não excluídas)
+// atualmente visíveis conforme o filtro principal em uso — usada só pelo
+// checkbox "Selecionar todas" do Modo Movimentação. Mover não depende de
+// status (concluída/pendente), então nenhuma tarefa ativa fica de fora
+// por causa disso.
+function obterChavesTransportaveisVisiveis() {
+  const { chaves: chavesParaRenderizar } = obterChavesPorFiltro();
+  const resultado = [];
+  chavesParaRenderizar.forEach((chaveData) => {
+    const dia = bancoDadosGeral[chaveData];
+    if (!dia || !dia.items) return;
+    dia.items.forEach((item, idx) => {
+      if (item.excluida) return;
+      resultado.push(chaveData + '|' + idx);
+    });
+  });
+  return resultado;
+}
+
+// Corrige o item 3 da auditoria (contador preso em "0 selecionada(s)") e
+// mantém o checkbox "Selecionar todas" sincronizado com a seleção atual —
+// sem nunca tocar em concluídas, filtros, progresso ou status da tarefa.
 function atualizarContadorTransporte() {
   const el = document.getElementById('selecaoContagem');
   if (el)
-    el.textContent = `${itensSelecionadosTransporte.size} selecionada(s)`;
+    el.textContent = `${itensSelecionadosTransporte.size} tarefa(s) selecionada(s)`;
+
+  const chkTodas = document.getElementById('chkSelecionarTodasTransporte');
+  if (chkTodas) {
+    const visiveis = obterChavesTransportaveisVisiveis();
+    const selecionadasVisiveis = visiveis.filter((c) =>
+      itensSelecionadosTransporte.has(c)
+    ).length;
+    chkTodas.checked =
+      visiveis.length > 0 && selecionadasVisiveis === visiveis.length;
+    chkTodas.indeterminate =
+      selecionadasVisiveis > 0 && selecionadasVisiveis < visiveis.length;
+  }
 }
 
 function abrirMenuContexto(x, y, chave) {
@@ -1877,6 +1936,25 @@ function setupTransporte() {
   const moverDataInput = document.getElementById('moverDataInput');
   const ctxMenu = document.getElementById('itemContextMenu');
   const ctxMoverItem = document.getElementById('ctxMoverItem');
+  const chkSelecionarTodasTransporte = document.getElementById(
+    'chkSelecionarTodasTransporte'
+  );
+
+  // "Selecionar todas" marca/desmarca somente o checkbox de movimentação
+  // das tarefas ativas visíveis no filtro atual — nunca mexe em concluídas,
+  // filtros, progresso ou status da tarefa.
+  if (chkSelecionarTodasTransporte) {
+    chkSelecionarTodasTransporte.addEventListener('change', () => {
+      if (chkSelecionarTodasTransporte.checked) {
+        obterChavesTransportaveisVisiveis().forEach((chave) =>
+          itensSelecionadosTransporte.add(chave)
+        );
+      } else {
+        itensSelecionadosTransporte.clear();
+      }
+      render();
+    });
+  }
 
   if (moveBtn) {
     moveBtn.addEventListener('click', () => {

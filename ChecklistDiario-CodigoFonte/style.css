@@ -402,8 +402,13 @@ body.textura-glass .modal-content {
 
 .item {
   display: flex !important;
-  align-items: center !important;
-  gap: 10px !important;
+  /* Coluna: a linha de conteúdo principal (checkbox de concluída, título,
+     subtítulo, ações) fica em cima; o checkbox de mover — quando o Modo
+     Movimentação está ativo — vira uma segunda linha abaixo, nunca lado a
+     lado com a linha de conteúdo. */
+  flex-direction: column !important;
+  align-items: stretch !important;
+  gap: 6px !important;
   padding: 10px 12px !important;
   background: var(--bg-alpha) !important;
   border: 1px solid var(--border-alpha) !important;
@@ -417,6 +422,13 @@ body.textura-glass .modal-content {
     background 0.15s var(--ease),
     transform 0.15s var(--ease),
     box-shadow 0.15s var(--ease) !important;
+}
+
+.item-main-row {
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  width: 100% !important;
 }
 .item:hover {
   background: var(--bg-hover-alpha) !important;
@@ -1021,14 +1033,30 @@ input[type='date']::-webkit-calendar-picker-indicator:hover {
    ========================================== */
 .selecao-bar {
   display: flex !important;
-  align-items: center !important;
-  justify-content: space-between !important;
-  gap: 8px !important;
+  flex-direction: column !important;
+  gap: 6px !important;
   background: var(--palette-surface-2, var(--bg-alpha)) !important;
   border: 1px solid var(--palette-border-strong, var(--border-alpha)) !important;
   border-radius: var(--radius-md) !important;
   padding: 6px 10px !important;
   margin-bottom: 8px !important;
+  flex-shrink: 0 !important;
+}
+.selecao-bar-top {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 8px !important;
+}
+.selecao-bar-tudo-label {
+  display: flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  color: var(--text-color) !important;
+  cursor: pointer !important;
+  user-select: none !important;
   flex-shrink: 0 !important;
 }
 /* Corrige o item 1/2 do escopo: sem esta regra mais específica, o
@@ -1068,16 +1096,34 @@ input[type='date']::-webkit-calendar-picker-indicator:hover {
   ) !important;
 }
 
-/* Item em modo-seleção: o checkbox extra de "selecionado pra mover" fica
-   à esquerda do checkbox de "concluída", com um destaque de borda para
-   diferenciar visualmente das duas funções (evita confundir concluir
-   com selecionar — heurística de reconhecimento, não memorização). */
+/* Item em modo-seleção: o checkbox extra de "selecionar para mover" fica
+   numa linha própria ABAIXO de todo o conteúdo do card (título,
+   subtítulo, links/observações/anexos), nunca ao lado do checkbox de
+   "concluída" — evita confundir concluir com selecionar para mover, que
+   são ações totalmente independentes (uma não altera a outra). Um
+   destaque de borda diferencia visualmente o card em modo-seleção. */
 .item.selecionavel {
   border-color: var(--palette-border-strong, var(--border-alpha)) !important;
+}
+.item-select-row {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  width: 100% !important;
+  padding-top: 6px !important;
+  margin-top: 2px !important;
+  border-top: 1px dashed var(--border-alpha) !important;
+  cursor: pointer !important;
+  user-select: none !important;
 }
 .item-select-checkbox {
   accent-color: var(--palette-accent, var(--text-color)) !important;
   cursor: pointer !important;
+  margin-top: 0 !important;
+}
+.item-select-label {
+  font-size: 11px !important;
+  color: var(--sub-text-color, rgba(0, 0, 0, 0.6)) !important;
 }
 
 /* ==========================================
