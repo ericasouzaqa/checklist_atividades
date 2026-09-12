@@ -3,6 +3,21 @@ let dataAtualSelecionada = '';
 let acaoConfirmacaoPendente = null;
 let inicializandoSistema = true;
 
+// ==========================================
+// ESTADO — LIXEIRA (item 2) e TRANSPORTE DE TAREFAS (item 3/4)
+// Itens são identificados por uma chave estável "chaveData|idxReal"
+// (a data do item + seu índice real dentro de items[]). Como restaurar
+// ou mover nunca faz splice() no meio de uma lista sem já ter copiado
+// o item, os índices permanecem válidos durante toda a sessão do
+// modal/seleção aberta.
+// ==========================================
+let lixeiraFiltroAtual = 'todas';
+let lixeiraSelecionados = new Set();
+
+let modoSelecaoAtivo = false;
+let itensSelecionadosTransporte = new Set();
+let chaveContextoTransporte = null;
+
 window.addEventListener('DOMContentLoaded', async () => {
   const hoje = new Date();
   dataAtualSelecionada =
@@ -96,6 +111,8 @@ window.addEventListener('DOMContentLoaded', async () => {
   setupExportLogic();
   setupFiltrosGlobais();
   setupTooltips();
+  setupLixeira();
+  setupTransporte();
 
   if (window.api && typeof window.api.onCloseRequested === 'function') {
     window.api.onCloseRequested(async () => {
@@ -125,7 +142,6 @@ function setupModalEvents() {
   const closeBtn = document.getElementById('btnSalvarModal');
   const inputCor = document.getElementById('inputCorNativa');
   const dropdownTextTextures = document.getElementById('dropdownTexturas');
-  const slider = document.getElementById('brightnessSlider');
 
   if (openBtn && overlay) {
     openBtn.addEventListener('click', (e) => {
@@ -189,16 +205,6 @@ function setupModalEvents() {
       applyColorAndTexture(
         inputCor?.value || '#FFF3B0',
         dropdownTextTextures.value,
-        false
-      );
-    });
-  }
-
-  if (slider) {
-    slider.addEventListener('input', () => {
-      applyColorAndTexture(
-        inputCor?.value || '#FFF3B0',
-        dropdownTextTextures?.value || 'none',
         false
       );
     });
@@ -436,6 +442,28 @@ function formatDate(dataStr) {
   return `${dias[d.getDay()]} , ${d.getDate()} de ${meses[d.getMonth()]} de ${d.getFullYear()}`;
 }
 
+// Nome da aba do XLSX ("Setembro_2026") a partir de uma chave "AAAA-MM-DD"
+// — mesma lista de meses do formatDate acima, só que exposta como função
+// própria porque a exportação precisa dela fora do escopo de formatDate.
+function nomeMesAno(dataStr) {
+  const meses = [
+    'Janeiro',
+    'Fevereiro',
+    'Março',
+    'Abril',
+    'Maio',
+    'Junho',
+    'Julho',
+    'Agosto',
+    'Setembro',
+    'Outubro',
+    'Novembro',
+    'Dezembro',
+  ];
+  const d = new Date(dataStr + 'T00:00:00');
+  return `${meses[d.getMonth()]}_${d.getFullYear()}`;
+}
+
 async function persist() {
   if (inicializandoSistema) return;
   await window.api.saveData(bancoDadosGeral);
@@ -495,6 +523,13 @@ function render() {
   const cc = document.getElementById('containerCamposPeriodo');
   if (cc) cc.style.display = mainFilter === 'periodo' ? 'flex' : 'none';
 
+  // Item 1 da auditoria (responsividade): em janelas largas, a visão
+  // "Hoje" (que suporta arrastar-para-reordenar, dependente de posição
+  // vertical) continua em coluna única; as demais visões (que só juntam
+  // vários dias, sem drag-and-drop) viram um grid fluido — os cards
+  // aproveitam o espaço extra em vez de deixá-lo vazio.
+  list.classList.toggle('modo-grid', mainFilter !== 'hoje');
+
   const fragment = document.createDocumentFragment();
   chavesParaRenderizar.sort().forEach((chaveData) => {
     if (!bancoDadosGeral[chaveData] || !bancoDadosGeral[chaveData].items)
@@ -502,29 +537,85 @@ function render() {
     const ativos = bancoDadosGeral[chaveData].items.filter((i) => !i.excluida);
     if (ativos.length === 0) return;
 
-    const headerData = document.createElement('div');
-    headerData.className = 'historico-data-header';
-    headerData.innerHTML = `🗓️ <span>${formatDate(chaveData)}</span>`;
-    fragment.appendChild(headerData);
+    // No filtro "Hoje" a data já aparece em #dateLabel, logo acima da
+    // lista — repetir aqui duplicava a mesma informação (item 1 da
+    // auditoria). Nos demais filtros (Semana/Mês/Ano/Período), que juntam
+    // vários dias na mesma lista, o header continua necessário.
+    if (mainFilter !== 'hoje') {
+      const headerData = document.createElement('div');
+      headerData.className = 'historico-data-header';
+      headerData.innerHTML = `🗓️ <span>${formatDate(chaveData)}</span>`;
+      fragment.appendChild(headerData);
+    }
 
     ativos.forEach((item) => {
       const idxReal = bancoDadosGeral[chaveData].items.indexOf(item);
       const row = document.createElement('div');
       row.className = 'item' + (item.done ? ' done' : '');
+      // dataset precisa existir em QUALQUER filtro (não só "Hoje"), pois o
+      // Transporte de Tarefas (Ctrl+clique e menu de contexto) e a Lixeira
+      // dependem dele para identificar a tarefa em qualquer visão.
+      row.dataset.indexReal = idxReal;
+      row.dataset.chaveData = chaveData;
 
-      if (mainFilter === 'hoje') {
+      // Arrastar-para-reordenar só faz sentido na visão "Hoje" e fica
+      // desligado durante o modo de seleção do Transporte: arrastar mudaria
+      // a ordem/índices dos itens enquanto uma seleção por índice está
+      // ativa, dessincronizando o que está marcado.
+      if (mainFilter === 'hoje' && !modoSelecaoAtivo) {
         row.draggable = true;
-        row.dataset.indexReal = idxReal;
-        row.dataset.chaveData = chaveData;
-
         row.addEventListener('dragstart', (e) => {
           row.classList.add('dragging');
           e.dataTransfer.setData('text/plain', idxReal);
         });
-
         row.addEventListener('dragend', () => {
           row.classList.remove('dragging');
         });
+      }
+
+      const chaveTransporte = chaveData + '|' + idxReal;
+      // O Transporte move tarefas PENDENTES para outro dia (mover uma
+      // tarefa já concluída não faz sentido de produto) — mantém coerência
+      // com o tooltip do botão "Mover" no rodapé.
+      const podeTransportar = !item.done;
+
+      if (podeTransportar) {
+        // Gatilho 2 do Transporte (Ctrl/Cmd+clique) e seleção por clique
+        // simples quando o modo já está ativo ("Selecionar individualmente").
+        row.addEventListener('click', (e) => {
+          if (e.target.closest('input, button, a')) return;
+          if (e.ctrlKey || e.metaKey) {
+            e.preventDefault();
+            if (!modoSelecaoAtivo) ativarModoSelecaoTransporte();
+            toggleSelecaoTransporte(chaveTransporte);
+            render();
+            return;
+          }
+          if (modoSelecaoAtivo) {
+            toggleSelecaoTransporte(chaveTransporte);
+            render();
+          }
+        });
+
+        // Gatilho 3 do Transporte: clique-direito abre "Mover para...".
+        row.addEventListener('contextmenu', (e) => {
+          e.preventDefault();
+          abrirMenuContexto(e.clientX, e.clientY, chaveTransporte);
+        });
+
+        if (modoSelecaoAtivo) {
+          row.classList.add('selecionavel');
+          const selectCb = document.createElement('input');
+          selectCb.type = 'checkbox';
+          selectCb.className = 'item-select-checkbox';
+          selectCb.checked = itensSelecionadosTransporte.has(chaveTransporte);
+          selectCb.setAttribute('data-tooltip', 'Selecionar para mover');
+          selectCb.addEventListener('change', (e) => {
+            e.stopPropagation();
+            toggleSelecaoTransporte(chaveTransporte);
+          });
+          row.appendChild(selectCb);
+        }
       }
 
       const cb = document.createElement('input');
@@ -532,6 +623,9 @@ function render() {
       cb.checked = item.done;
       cb.addEventListener('change', () => {
         bancoDadosGeral[chaveData].items[idxReal].done = cb.checked;
+        // Uma tarefa concluída sai automaticamente da seleção do
+        // Transporte (que só move tarefas pendentes).
+        if (cb.checked) itensSelecionadosTransporte.delete(chaveTransporte);
         persist();
         render();
       });
@@ -567,6 +661,7 @@ function render() {
               String(agora.getHours()).padStart(2, '0') +
               ':' +
               String(agora.getMinutes()).padStart(2, '0');
+            itensSelecionadosTransporte.delete(chaveData + '|' + idxReal);
             persist();
             render();
           }
@@ -658,6 +753,12 @@ function render() {
         ? 'DESMARCAR TUDO'
         : 'SELECIONAR TUDO';
   }
+
+  // Corrige o item 3 da auditoria: "0 selecionada(s)" não refletia os
+  // itens marcados. A contagem agora é recalculada sempre que a lista é
+  // redesenhada, além de a cada toggle individual (ver
+  // atualizarContadorTransporte).
+  atualizarContadorTransporte();
 }
 
 function setupChecklistControls() {
@@ -716,6 +817,10 @@ function setupChecklistControls() {
 
   const clearBtn = document.getElementById('clearBtn');
   if (clearBtn) {
+    clearBtn.setAttribute(
+      'data-tooltip',
+      'Apaga apenas os itens já concluídos'
+    );
     clearBtn.addEventListener('click', () => {
       const dadosDoDia = bancoDadosGeral[dataAtualSelecionada];
       if (!dadosDoDia) return;
@@ -737,6 +842,7 @@ function setupChecklistControls() {
                 String(agora.getHours()).padStart(2, '0') +
                 ':' +
                 String(agora.getMinutes()).padStart(2, '0');
+              itensSelecionadosTransporte.delete(dataAtualSelecionada + '|' + idx);
             }
           });
           persist();
@@ -768,6 +874,7 @@ function setupChecklistControls() {
                 String(agora.getHours()).padStart(2, '0') +
                 ':' +
                 String(agora.getMinutes()).padStart(2, '0');
+              itensSelecionadosTransporte.delete(dataAtualSelecionada + '|' + idx);
             }
           });
           persist();
@@ -832,17 +939,22 @@ function setupExportLogic() {
     chaves.sort().forEach((chaveData) => {
       const dia = bancoDadosGeral[chaveData];
       if (!dia || !dia.items) return;
-      dia.items
-        .filter((i) => !i.excluida)
-        .forEach((item) => {
-          linhas.push({
-            data: chaveData,
-            tarefa: item.text,
-            status: item.done ? 'Concluída' : 'Pendente',
-            horaCriacao: item.horaCriacao || '',
-            observacoes: item.observacoes || '',
-          });
+      dia.items.forEach((item) => {
+        const status = item.excluida
+          ? 'Excluída'
+          : item.done
+            ? 'Concluída'
+            : 'Pendente';
+        linhas.push({
+          data: chaveData,
+          tarefa: item.text,
+          status,
+          horaCriacao: item.horaCriacao || '',
+          observacoes: item.observacoes || '',
+          dataExclusao: item.dataExclusao || '',
+          horaExclusao: item.horaExclusao || '',
         });
+      });
     });
     return linhas;
   }
@@ -862,10 +974,19 @@ function setupExportLogic() {
       }
       const escapar = (v) =>
         String(v).replace(/;/g, ',').replace(/\r?\n/g, ' ');
-      const header = 'Data;Tarefa;Status;Hora de Criacao;Observacoes';
+      const header =
+        'Data;Tarefa;Status;Hora de Criacao;Observacoes;Data de Exclusao;Hora de Exclusao';
       const corpo = linhas
         .map((l) =>
-          [l.data, l.tarefa, l.status, l.horaCriacao, l.observacoes]
+          [
+            l.data,
+            l.tarefa,
+            l.status,
+            l.horaCriacao,
+            l.observacoes,
+            l.dataExclusao,
+            l.horaExclusao,
+          ]
             .map(escapar)
             .join(';')
         )
@@ -887,28 +1008,27 @@ function setupExportLogic() {
         alert('Não há tarefas para exportar no filtro de visão selecionado.');
         return;
       }
-      if (typeof XLSX === 'undefined') {
-        alert(
-          'A biblioteca de exportação para Excel não carregou. Verifique sua conexão com a internet e tente novamente.'
-        );
-        return;
-      }
-      const planilha = XLSX.utils.json_to_sheet(
-        linhas.map((l) => ({
+      // Agrupa por "Mês_Ano" (ex.: "Setembro_2026") — cada chave vira uma
+      // aba no workbook, montado no processo principal (main.js já tem
+      // "xlsx" como dependency real e expõe 'export-xlsx-multi' via
+      // preload). Não existe mais nenhuma lib XLSX carregada aqui no
+      // renderer, então gerar o workbook no próprio browser (como o
+      // código antigo tentava) nunca funcionava.
+      const dadosPorMes = {};
+      linhas.forEach((l) => {
+        const aba = nomeMesAno(l.data);
+        if (!dadosPorMes[aba]) dadosPorMes[aba] = [];
+        dadosPorMes[aba].push({
           Data: l.data,
           Tarefa: l.tarefa,
           Status: l.status,
           'Hora de Criação': l.horaCriacao,
           Observações: l.observacoes,
-        }))
-      );
-      const livro = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(livro, planilha, 'Checklist');
-      const arrayBuffer = XLSX.write(livro, {
-        bookType: 'xlsx',
-        type: 'array',
+          'Data de Exclusão': l.dataExclusao,
+          'Hora de Exclusão': l.horaExclusao,
+        });
       });
-      const resultado = await window.api.exportXlsx(arrayBuffer);
+      const resultado = await window.api.exportXlsxMulti(dadosPorMes);
       if (resultado && resultado.success) {
         fecharModalExport();
       } else if (resultado && resultado.error) {
@@ -1364,6 +1484,499 @@ function abrirModalEdicaoTarefa(chaveData, idxReal) {
     persist();
     render();
   });
+}
+
+// ==========================================
+// TRANSPORTE DE TAREFAS (itens 3 e 4 da auditoria)
+// Fluxo: Selecionar -> Mover -> Escolher data -> Confirmar -> Mover,
+// preservando todos os dados do item (texto, status, hora de criação,
+// observações). 3 gatilhos entram no modo de seleção: botão "Mover" do
+// rodapé, Ctrl/Cmd+clique num item, e "Mover para..." no menu de
+// contexto (clique-direito).
+// ==========================================
+
+function ativarModoSelecaoTransporte() {
+  modoSelecaoAtivo = true;
+  const bar = document.getElementById('selecaoBar');
+  if (bar) bar.classList.remove('hidden');
+}
+
+function desativarModoSelecaoTransporte() {
+  modoSelecaoAtivo = false;
+  itensSelecionadosTransporte.clear();
+  const bar = document.getElementById('selecaoBar');
+  if (bar) bar.classList.add('hidden');
+  render();
+}
+
+function toggleSelecaoTransporte(chave) {
+  if (itensSelecionadosTransporte.has(chave)) {
+    itensSelecionadosTransporte.delete(chave);
+  } else {
+    itensSelecionadosTransporte.add(chave);
+  }
+  atualizarContadorTransporte();
+}
+
+// Corrige o item 3 da auditoria (contador preso em "0 selecionada(s)").
+function atualizarContadorTransporte() {
+  const el = document.getElementById('selecaoContagem');
+  if (el)
+    el.textContent = `${itensSelecionadosTransporte.size} selecionada(s)`;
+}
+
+function abrirMenuContexto(x, y, chave) {
+  const menu = document.getElementById('itemContextMenu');
+  if (!menu) return;
+  chaveContextoTransporte = chave;
+  menu.style.top = y + 'px';
+  menu.style.left = x + 'px';
+  menu.classList.remove('hidden');
+
+  // Reposiciona se estourar a borda direita/inferior da janela.
+  requestAnimationFrame(() => {
+    const rect = menu.getBoundingClientRect();
+    if (rect.right > window.innerWidth) {
+      menu.style.left = Math.max(4, window.innerWidth - rect.width - 4) + 'px';
+    }
+    if (rect.bottom > window.innerHeight) {
+      menu.style.top =
+        Math.max(4, window.innerHeight - rect.height - 4) + 'px';
+    }
+  });
+}
+
+function fecharMenuContexto() {
+  const menu = document.getElementById('itemContextMenu');
+  if (menu) menu.classList.add('hidden');
+}
+
+function abrirModalMoverData() {
+  const overlay = document.getElementById('moverDataOverlay');
+  const label = document.getElementById('moverDataLabel');
+  const input = document.getElementById('moverDataInput');
+  if (label)
+    label.textContent = `Mover ${itensSelecionadosTransporte.size} tarefa(s) para:`;
+  if (input && !input.value) input.value = dataAtualSelecionada;
+  if (overlay) {
+    overlay.classList.remove('hidden');
+    overlay.classList.add('open');
+  }
+}
+
+function fecharModalMoverData() {
+  const overlay = document.getElementById('moverDataOverlay');
+  if (overlay) {
+    overlay.classList.add('hidden');
+    overlay.classList.remove('open');
+  }
+}
+
+// Move fisicamente os itens (splice na origem + push no destino),
+// preservando 100% dos dados de cada tarefa — nada é recriado do zero.
+// Processa os índices em ordem decrescente por data de origem para que
+// remover um item não desloque o índice dos próximos a remover na mesma
+// lista.
+function moverTarefasParaData(chaves, dataDestino) {
+  const porOrigem = {};
+  chaves.forEach((chave) => {
+    const separador = chave.lastIndexOf('|');
+    const chaveData = chave.substring(0, separador);
+    const idx = parseInt(chave.substring(separador + 1));
+    if (!porOrigem[chaveData]) porOrigem[chaveData] = [];
+    porOrigem[chaveData].push(idx);
+  });
+
+  if (!bancoDadosGeral[dataDestino]) {
+    const corPadrao = bancoDadosGeral._configCorGlobal?.color || '#FFF3B0';
+    const txtPadrao = bancoDadosGeral._configCorGlobal?.texture || 'none';
+    bancoDadosGeral[dataDestino] = {
+      color: corPadrao,
+      texture: txtPadrao,
+      items: [],
+    };
+  }
+
+  Object.keys(porOrigem).forEach((chaveData) => {
+    if (!bancoDadosGeral[chaveData] || !bancoDadosGeral[chaveData].items)
+      return;
+    const indicesDesc = porOrigem[chaveData].sort((a, b) => b - a);
+    const listaOrigem = bancoDadosGeral[chaveData].items;
+    indicesDesc.forEach((idx) => {
+      const [itemMovido] = listaOrigem.splice(idx, 1);
+      if (itemMovido) bancoDadosGeral[dataDestino].items.push(itemMovido);
+    });
+  });
+
+  persist();
+}
+
+function setupTransporte() {
+  const moveBtn = document.getElementById('moveBtn');
+  const btnCancelarSelecao = document.getElementById('btnCancelarSelecao');
+  const btnMoverSelecionadas = document.getElementById(
+    'btnMoverSelecionadas'
+  );
+  const moverOverlay = document.getElementById('moverDataOverlay');
+  const closeMoverDataX = document.getElementById('closeMoverDataX');
+  const btnMoverContinuar = document.getElementById('btnMoverContinuar');
+  const moverDataInput = document.getElementById('moverDataInput');
+  const ctxMenu = document.getElementById('itemContextMenu');
+  const ctxMoverItem = document.getElementById('ctxMoverItem');
+
+  if (moveBtn) {
+    moveBtn.addEventListener('click', () => {
+      if (modoSelecaoAtivo) {
+        desativarModoSelecaoTransporte();
+        return;
+      }
+      ativarModoSelecaoTransporte();
+      render();
+    });
+  }
+
+  if (btnCancelarSelecao) {
+    btnCancelarSelecao.addEventListener('click', () => {
+      desativarModoSelecaoTransporte();
+    });
+  }
+
+  if (btnMoverSelecionadas) {
+    btnMoverSelecionadas.addEventListener('click', () => {
+      if (itensSelecionadosTransporte.size === 0) return;
+      abrirModalMoverData();
+    });
+  }
+
+  if (closeMoverDataX) {
+    closeMoverDataX.addEventListener('click', (e) => {
+      e.stopPropagation();
+      // Fecha só o modal de data: a seleção continua ativa, permitindo
+      // escolher outra data sem perder o que já foi marcado.
+      fecharModalMoverData();
+    });
+  }
+
+  if (btnMoverContinuar) {
+    btnMoverContinuar.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const destino = moverDataInput?.value;
+      if (!destino) return;
+      const quantidade = itensSelecionadosTransporte.size;
+      const chavesParaMover = [...itensSelecionadosTransporte];
+      fecharModalMoverData();
+      abrirCaixaConfirmacaoCustomizada(
+        `Mover ${quantidade} tarefa(s) para ${formatDate(destino)}?`,
+        () => {
+          moverTarefasParaData(chavesParaMover, destino);
+          desativarModoSelecaoTransporte();
+        }
+      );
+    });
+  }
+
+  // Gatilho 3: menu de contexto (clique-direito num item -> "Mover para...")
+  if (ctxMoverItem) {
+    ctxMoverItem.addEventListener('click', (e) => {
+      e.stopPropagation();
+      fecharMenuContexto();
+      if (!chaveContextoTransporte) return;
+      itensSelecionadosTransporte.clear();
+      itensSelecionadosTransporte.add(chaveContextoTransporte);
+      ativarModoSelecaoTransporte();
+      render();
+      abrirModalMoverData();
+    });
+  }
+
+  // Fecha o menu de contexto ao clicar fora ou pressionar Esc.
+  document.addEventListener('click', (e) => {
+    if (ctxMenu && !ctxMenu.classList.contains('hidden')) {
+      if (!e.target.closest('#itemContextMenu')) fecharMenuContexto();
+    }
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') fecharMenuContexto();
+  });
+}
+
+// ==========================================
+// LIXEIRA (item 2 da auditoria)
+// Fluxo: Escolher data -> Mostrar cards -> Selecionar tudo /
+// individualmente -> Restaurar selecionadas / todas -> Confirmar ->
+// Restaurar. Ao restaurar, o item some da lixeira e volta para a data
+// original (basta zerar a flag "excluida" — o item nunca sai de
+// items[], então "voltar para a data original" é automático).
+// ==========================================
+
+// Retorna { chaveData, idx, item } de todas as tarefas excluídas,
+// respeitando o filtro de data ativo na Lixeira ("todas" ou uma data
+// específica), ordenado por data.
+function obterItensExcluidosVisiveis() {
+  const resultado = [];
+  Object.keys(bancoDadosGeral).forEach((chaveData) => {
+    if (chaveData.startsWith('_')) return;
+    const dia = bancoDadosGeral[chaveData];
+    if (!dia || !dia.items) return;
+    dia.items.forEach((item, idx) => {
+      if (!item.excluida) return;
+      if (lixeiraFiltroAtual !== 'todas' && chaveData !== lixeiraFiltroAtual)
+        return;
+      resultado.push({ chaveData, idx, item });
+    });
+  });
+  resultado.sort((a, b) => a.chaveData.localeCompare(b.chaveData));
+  return resultado;
+}
+
+// Restaura (des-exclui) uma lista de chaves "chaveData|idx". Não faz
+// splice nenhum: só volta "excluida" para false, então o item continua
+// exatamente onde estava dentro de items[] — reaparece automaticamente
+// na data original assim que a checklist principal for redesenhada.
+function restaurarChaves(chaves) {
+  chaves.forEach((chave) => {
+    const separador = chave.lastIndexOf('|');
+    const chaveData = chave.substring(0, separador);
+    const idx = parseInt(chave.substring(separador + 1));
+    const dia = bancoDadosGeral[chaveData];
+    if (!dia || !dia.items || !dia.items[idx]) return;
+    dia.items[idx].excluida = false;
+    dia.items[idx].dataExclusao = '';
+    dia.items[idx].horaExclusao = '';
+  });
+  persist();
+  render();
+}
+
+function atualizarContadorLixeira() {
+  const contagem = document.getElementById('lixeiraContagem');
+  if (contagem)
+    contagem.textContent = `${lixeiraSelecionados.size} selecionada(s)`;
+}
+
+function sincronizarCheckboxTudoLixeira() {
+  const chkTudo = document.getElementById('lixeiraSelecionarTudo');
+  if (!chkTudo) return;
+  const visiveis = obterItensExcluidosVisiveis();
+  chkTudo.checked =
+    visiveis.length > 0 &&
+    visiveis.every(({ chaveData, idx }) =>
+      lixeiraSelecionados.has(chaveData + '|' + idx)
+    );
+}
+
+function renderLixeira() {
+  const lista = document.getElementById('lixeiraLista');
+  const filtroSelect = document.getElementById('lixeiraFiltroData');
+  if (!lista) return;
+
+  // Popula o filtro de data só com datas que realmente têm itens na
+  // lixeira, mantendo a seleção atual quando ainda for válida.
+  if (filtroSelect) {
+    const datasComExcluidos = new Set();
+    Object.keys(bancoDadosGeral).forEach((chaveData) => {
+      if (chaveData.startsWith('_')) return;
+      const dia = bancoDadosGeral[chaveData];
+      if (dia && dia.items && dia.items.some((i) => i.excluida)) {
+        datasComExcluidos.add(chaveData);
+      }
+    });
+    const listaDatas = [...datasComExcluidos].sort().reverse();
+    const valorPreservado =
+      lixeiraFiltroAtual === 'todas' || listaDatas.includes(lixeiraFiltroAtual)
+        ? lixeiraFiltroAtual
+        : 'todas';
+    filtroSelect.innerHTML = '<option value="todas">Todas as datas</option>';
+    listaDatas.forEach((d) => {
+      const opt = document.createElement('option');
+      opt.value = d;
+      opt.textContent = formatDate(d);
+      filtroSelect.appendChild(opt);
+    });
+    lixeiraFiltroAtual = valorPreservado;
+    filtroSelect.value = valorPreservado;
+  }
+
+  const itensVisiveis = obterItensExcluidosVisiveis();
+  lista.innerHTML = '';
+
+  if (itensVisiveis.length === 0) {
+    const vazio = document.createElement('div');
+    vazio.className = 'lixeira-empty';
+    vazio.textContent = '🗑️ A lixeira está vazia.';
+    lista.appendChild(vazio);
+  } else {
+    let ultimaData = null;
+    itensVisiveis.forEach(({ chaveData, idx, item }) => {
+      if (chaveData !== ultimaData) {
+        ultimaData = chaveData;
+        const header = document.createElement('div');
+        header.className = 'lixeira-day-header';
+
+        const span = document.createElement('span');
+        span.textContent = '🗓️ ' + formatDate(chaveData);
+
+        const btnDia = document.createElement('button');
+        btnDia.className = 'lixeira-restore-day-btn';
+        btnDia.textContent = 'Restaurar dia';
+        btnDia.setAttribute(
+          'data-tooltip',
+          'Restaurar todas as tarefas apagadas deste dia'
+        );
+        btnDia.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const chavesDoDia = itensVisiveis
+            .filter((v) => v.chaveData === chaveData)
+            .map((v) => v.chaveData + '|' + v.idx);
+          abrirCaixaConfirmacaoCustomizada(
+            `Restaurar todas as tarefas apagadas de ${formatDate(chaveData)}?`,
+            () => {
+              restaurarChaves(chavesDoDia);
+              chavesDoDia.forEach((c) => lixeiraSelecionados.delete(c));
+              renderLixeira();
+            }
+          );
+        });
+
+        header.appendChild(span);
+        header.appendChild(btnDia);
+        lista.appendChild(header);
+      }
+
+      const chave = chaveData + '|' + idx;
+      const row = document.createElement('div');
+      row.className = 'lixeira-item';
+
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.className = 'item-select-checkbox';
+      cb.checked = lixeiraSelecionados.has(chave);
+      cb.addEventListener('change', () => {
+        if (cb.checked) lixeiraSelecionados.add(chave);
+        else lixeiraSelecionados.delete(chave);
+        atualizarContadorLixeira();
+        sincronizarCheckboxTudoLixeira();
+      });
+
+      const info = document.createElement('div');
+      info.className = 'lixeira-item-info';
+      const txt = document.createElement('div');
+      txt.className = 'lixeira-item-text';
+      txt.textContent = item.text;
+      const meta = document.createElement('div');
+      meta.className = 'lixeira-item-meta';
+      const dataRef = item.dataExclusao || chaveData;
+      meta.textContent = `Apagada em ${formatDate(dataRef)}${item.horaExclusao ? ' às ' + item.horaExclusao : ''}`;
+      info.appendChild(txt);
+      info.appendChild(meta);
+
+      const btnRestaurar = document.createElement('button');
+      btnRestaurar.className = 'lixeira-restore-btn';
+      btnRestaurar.textContent = '↩️';
+      btnRestaurar.setAttribute('data-tooltip', 'Restaurar esta tarefa');
+      btnRestaurar.addEventListener('click', (e) => {
+        e.stopPropagation();
+        restaurarChaves([chave]);
+        lixeiraSelecionados.delete(chave);
+        renderLixeira();
+      });
+
+      row.appendChild(cb);
+      row.appendChild(info);
+      row.appendChild(btnRestaurar);
+      lista.appendChild(row);
+    });
+  }
+
+  atualizarContadorLixeira();
+  sincronizarCheckboxTudoLixeira();
+}
+
+function setupLixeira() {
+  const overlay = document.getElementById('lixeiraOverlay');
+  const openBtn = document.getElementById('trashBtn');
+  const closeX = document.getElementById('closeLixeiraX');
+  const filtroSelect = document.getElementById('lixeiraFiltroData');
+  const chkTudo = document.getElementById('lixeiraSelecionarTudo');
+  const btnRestaurarSel = document.getElementById(
+    'btnLixeiraRestaurarSelecionadas'
+  );
+  const btnRestaurarTodas = document.getElementById(
+    'btnLixeiraRestaurarTodas'
+  );
+
+  if (openBtn && overlay) {
+    openBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      lixeiraSelecionados.clear();
+      lixeiraFiltroAtual = 'todas';
+      renderLixeira();
+      overlay.classList.remove('hidden');
+      overlay.classList.add('open');
+    });
+  }
+
+  if (closeX && overlay) {
+    closeX.addEventListener('click', (e) => {
+      e.stopPropagation();
+      overlay.classList.add('hidden');
+      overlay.classList.remove('open');
+    });
+  }
+
+  if (filtroSelect) {
+    filtroSelect.addEventListener('change', () => {
+      lixeiraFiltroAtual = filtroSelect.value;
+      lixeiraSelecionados.clear();
+      renderLixeira();
+    });
+  }
+
+  if (chkTudo) {
+    chkTudo.addEventListener('change', () => {
+      const visiveis = obterItensExcluidosVisiveis();
+      if (chkTudo.checked) {
+        visiveis.forEach(({ chaveData, idx }) =>
+          lixeiraSelecionados.add(chaveData + '|' + idx)
+        );
+      } else {
+        lixeiraSelecionados.clear();
+      }
+      renderLixeira();
+    });
+  }
+
+  if (btnRestaurarSel) {
+    btnRestaurarSel.addEventListener('click', () => {
+      if (lixeiraSelecionados.size === 0) return;
+      const quantidade = lixeiraSelecionados.size;
+      abrirCaixaConfirmacaoCustomizada(
+        `Restaurar ${quantidade} tarefa(s) selecionada(s)?`,
+        () => {
+          restaurarChaves([...lixeiraSelecionados]);
+          lixeiraSelecionados.clear();
+          renderLixeira();
+        }
+      );
+    });
+  }
+
+  if (btnRestaurarTodas) {
+    btnRestaurarTodas.addEventListener('click', () => {
+      const visiveis = obterItensExcluidosVisiveis();
+      if (visiveis.length === 0) return;
+      abrirCaixaConfirmacaoCustomizada(
+        `Restaurar todas as ${visiveis.length} tarefa(s) apagada(s)?`,
+        () => {
+          restaurarChaves(
+            visiveis.map(({ chaveData, idx }) => chaveData + '|' + idx)
+          );
+          lixeiraSelecionados.clear();
+          renderLixeira();
+        }
+      );
+    });
+  }
 }
 
 // ==========================================

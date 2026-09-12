@@ -36,6 +36,7 @@
 
     <div id="content">
       <div
+        id="filtroTopoRow"
         style="
           display: flex;
           justify-content: space-between;
@@ -48,7 +49,7 @@
           id="mainFilterSelect"
           style="
             padding: 4px 6px;
-            border-radius: 6px;
+            border-radius: var(--radius-sm);
             font-size: 12px;
             font-weight: 600;
             border: 1px solid var(--border-alpha);
@@ -63,19 +64,7 @@
           <option value="periodo">Visão: Por Período</option>
         </select>
 
-        <input
-          type="date"
-          id="seletor-data"
-          style="
-            padding: 3px 6px;
-            border-radius: 6px;
-            font-size: 11px;
-            font-family: inherit;
-            border: 1px solid var(--border-alpha);
-            background: var(--input-bg-alpha);
-            color: var(--text-color);
-          "
-        />
+        <input type="date" id="seletor-data" class="date-input" />
       </div>
 
       <div
@@ -91,29 +80,9 @@
         "
       >
         <span>De:</span>
-        <input
-          type="date"
-          id="periodoDe"
-          style="
-            padding: 2px 4px;
-            border-radius: 5px;
-            border: 1px solid var(--border-alpha);
-            background: var(--input-bg-alpha);
-            color: var(--text-color);
-          "
-        />
+        <input type="date" id="periodoDe" class="date-input" />
         <span>Até:</span>
-        <input
-          type="date"
-          id="periodoAte"
-          style="
-            padding: 2px 4px;
-            border-radius: 5px;
-            border: 1px solid var(--border-alpha);
-            background: var(--input-bg-alpha);
-            color: var(--text-color);
-          "
-        />
+        <input type="date" id="periodoAte" class="date-input" />
       </div>
       <div id="dateLabel">Carregando data...</div>
 
@@ -175,13 +144,7 @@
 
       <div id="footerRow">
         <button class="link-btn" id="resetBtn">SELECIONAR TUDO</button>
-        <button
-          class="link-btn"
-          id="clearBtn"
-          title="Apaga apenas os itens que já foram marcados como selecionados"
-        >
-          Limpar Selecionadas
-        </button>
+        <button class="link-btn" id="clearBtn">Limpar Selecionadas</button>
         <button
           class="link-btn"
           id="moveBtn"
@@ -268,7 +231,7 @@
           position: relative;
           width: 280px;
           padding: 16px;
-          border-radius: 12px;
+          border-radius: var(--radius-lg);
           background: var(--modal-bg);
           color: var(--text-color);
           box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
@@ -362,7 +325,7 @@
           style="
             width: 100%;
             height: 28px;
-            border-radius: 6px;
+            border-radius: var(--radius-sm);
             border: 1px solid var(--border-alpha);
             background: transparent;
             cursor: pointer;
@@ -376,7 +339,7 @@
           style="
             width: 100%;
             padding: 4px;
-            border-radius: 6px;
+            border-radius: var(--radius-sm);
             font-size: 11px;
             border: 1px solid var(--border-alpha);
             background: var(--input-bg-alpha);
@@ -398,7 +361,7 @@
           style="
             width: 100%;
             padding: 4px;
-            border-radius: 6px;
+            border-radius: var(--radius-sm);
             font-size: 11px;
             border: 1px solid var(--border-alpha);
             background: var(--input-bg-alpha);
@@ -421,7 +384,7 @@
             width: 100%;
             padding: 7px;
             border: none;
-            border-radius: 7px;
+            border-radius: var(--radius-sm);
             background: var(--text-color);
             color: var(--modal-bg);
             font-weight: 600;
@@ -457,7 +420,7 @@
           position: relative;
           width: 280px;
           padding: 16px;
-          border-radius: 12px;
+          border-radius: var(--radius-lg);
           background: var(--modal-bg);
           color: var(--text-color);
           box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
@@ -518,7 +481,7 @@
               width: 100%;
               padding: 8px;
               border: 1px solid var(--border-alpha);
-              border-radius: 7px;
+              border-radius: var(--radius-sm);
               background: var(--input-bg-alpha);
               color: var(--text-color);
               font-weight: 500;
@@ -538,7 +501,7 @@
               width: 100%;
               padding: 8px;
               border: none;
-              border-radius: 7px;
+              border-radius: var(--radius-sm);
               background: var(--text-color);
               color: var(--modal-bg);
               font-weight: 600;
@@ -580,7 +543,7 @@
           width: 260px;
           max-height: 400px;
           padding: 16px;
-          border-radius: 12px;
+          border-radius: var(--radius-lg);
           background: var(--modal-bg);
           color: var(--text-color);
           box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
@@ -622,6 +585,82 @@
           Nada aqui é apagado de verdade. Restaure uma tarefa ou o dia inteiro
           quando precisar.
         </div>
+        <!-- Controles funcionais da Lixeira: escolher data -> mostrar cards ->
+             selecionar tudo / individualmente -> restaurar selecionadas / todas.
+             Populado e sincronizado pelo renderer.js (renderLixeira). -->
+        <div
+          id="lixeiraControles"
+          style="
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin-bottom: 10px;
+            flex-shrink: 0;
+          "
+        >
+          <select
+            id="lixeiraFiltroData"
+            style="
+              width: 100%;
+              padding: 4px 6px;
+              border-radius: var(--radius-sm);
+              font-size: 11px;
+              font-weight: 600;
+              border: 1px solid var(--border-alpha);
+              background: var(--input-bg-alpha);
+              color: var(--text-color);
+            "
+          >
+            <option value="todas">Todas as datas</option>
+          </select>
+          <div
+            style="
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+            "
+          >
+            <label
+              style="
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                font-size: 11px;
+                cursor: pointer;
+                user-select: none;
+              "
+            >
+              <input
+                type="checkbox"
+                id="lixeiraSelecionarTudo"
+                class="item-select-checkbox"
+              />
+              Selecionar tudo
+            </label>
+            <span
+              id="lixeiraContagem"
+              style="font-size: 10.5px; color: var(--sub-text-color)"
+              >0 selecionada(s)</span
+            >
+          </div>
+          <div style="display: flex; gap: 6px">
+            <button
+              id="btnLixeiraRestaurarSelecionadas"
+              class="link-btn"
+              data-tooltip="Restaurar apenas as tarefas marcadas"
+            >
+              Restaurar selecionadas
+            </button>
+            <button
+              id="btnLixeiraRestaurarTodas"
+              class="link-btn"
+              style="font-weight: 600"
+              data-tooltip="Restaurar todas as tarefas apagadas visíveis"
+            >
+              Restaurar todas
+            </button>
+          </div>
+        </div>
         <div id="lixeiraLista" style="overflow-y: auto; flex: 1"></div>
       </div>
     </div>
@@ -649,7 +688,7 @@
           position: relative;
           width: 240px;
           padding: 16px;
-          border-radius: 12px;
+          border-radius: var(--radius-lg);
           background: var(--modal-bg);
           color: var(--text-color);
           box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
@@ -690,23 +729,13 @@
         <input
           type="date"
           id="moverDataInput"
-          style="
-            width: 100%;
-            padding: 6px;
-            border-radius: 6px;
-            border: 1px solid var(--border-alpha);
-            background: var(--input-bg-alpha);
-            color: var(--text-color);
-            margin-bottom: 12px;
-          "
+          class="date-input"
+          style="width: 100%; margin-bottom: 12px"
         />
         <div style="display: flex; gap: 6px">
-          <button id="btnMoverCancelar" class="link-btn" style="flex: 1">
-            Cancelar
-          </button>
           <button
             id="btnMoverContinuar"
-            class="link-btn"
+            class="link-btn modal-fixed-btn"
             style="flex: 1; font-weight: 600"
           >
             Continuar
@@ -733,7 +762,7 @@
         display: none;
         align-items: center;
         justify-content: center;
-        z-index: 200;
+        z-index: 250;
       "
     >
       <div
@@ -741,7 +770,7 @@
         style="
           width: 250px;
           padding: 14px;
-          border-radius: 10px;
+          border-radius: var(--radius-lg);
           background: var(--modal-bg);
           color: var(--text-color);
           text-align: center;
@@ -767,7 +796,7 @@
               border: 1px solid var(--border-alpha);
               background: var(--input-bg-alpha);
               color: var(--text-color);
-              border-radius: 6px;
+              border-radius: var(--radius-sm);
               font-size: 11px;
               cursor: pointer;
               font-weight: 500;
@@ -782,7 +811,7 @@
               border: none;
               background: #b91c1c;
               color: #ffffff;
-              border-radius: 6px;
+              border-radius: var(--radius-sm);
               font-size: 11px;
               cursor: pointer;
               font-weight: 600;

@@ -271,21 +271,38 @@ body.textura-glass .modal-content {
 }
 
 #content {
-  padding: 10px 16px 14px !important;
+  /* Item 1 da auditoria: padding e largura máxima cresciam em "degraus"
+     fixos (media queries de 600/900/1200px), o que deixava sobras de
+     espaço vazio bem visíveis logo antes de cada salto. clamp() cresce
+     em conjunto com a janela, sem degraus. */
+  padding:
+    clamp(10px, 2vw, 20px) clamp(16px, 3vw, 34px)
+    clamp(14px, 2.2vw, 24px) !important;
   height: calc(100% - 34px) !important;
   display: flex !important;
   flex-direction: column !important;
   user-select: text !important;
   overflow: hidden !important;
+  width: 100% !important;
+  max-width: clamp(320px, 94vw, 1400px) !important;
+  margin: 0 auto !important;
+  box-sizing: border-box !important;
 }
 
 /* Linha "Visão / Data" (#mainFilterSelect + #seletor-data) e a linha de
-   período (#periodoDe/#periodoAte) são montadas via style="" inline no
-   HTML, sem id/classe própria e sem gap definido — só space-between,
-   que em janelas estreitas praticamente cola os dois campos. */
-#content > div:first-child {
+   período (#periodoDe/#periodoAte): antes só tinham "space-between" e
+   largura fixa, então em janelas estreitas colavam uma na outra e em
+   janelas largas ficavam minúsculas nas pontas com um vão vazio enorme
+   no meio. Agora reorganizam (wrap) quando falta espaço e crescem
+   proporcionalmente até um teto legível quando sobra espaço. */
+#filtroTopoRow {
   gap: 8px !important;
   margin-bottom: 8px !important;
+  flex-wrap: wrap !important;
+}
+#filtroTopoRow > * {
+  flex: 1 1 150px !important;
+  max-width: 320px !important;
 }
 #containerCamposPeriodo {
   gap: 8px !important;
@@ -298,6 +315,26 @@ body.textura-glass .modal-content {
   margin-bottom: 8px !important;
   text-transform: capitalize !important;
   flex-shrink: 0 !important;
+}
+
+/* Separador de data dentro da lista (filtros Semana/Mês/Ano/Período, que
+   juntam vários dias) — antes sem nenhuma regra própria, herdando o
+   tamanho de fonte padrão do navegador. Reaproveita as mesmas variáveis
+   de tema do #dateLabel para manter a mesma linguagem visual. */
+.historico-data-header {
+  display: flex !important;
+  align-items: center !important;
+  gap: 4px !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  color: var(--sub-text-color, rgba(0, 0, 0, 0.55)) !important;
+  text-transform: capitalize !important;
+  margin: 12px 0 6px !important;
+  padding-bottom: 4px !important;
+  border-bottom: 1px solid var(--border-alpha) !important;
+}
+.historico-data-header:first-child {
+  margin-top: 0 !important;
 }
 
 #progressBarBg {
@@ -324,6 +361,35 @@ body.textura-glass .modal-content {
   flex-direction: column !important;
   gap: 6px !important;
   padding-bottom: 4px !important;
+}
+
+/* Item 1 da auditoria: nas visões que juntam vários dias (Semana / Mês /
+   Ano / Período — classe "modo-grid" ligada pelo renderer.js), os cards
+   passam a ocupar um grid fluido em vez de uma única coluna esticada até
+   virar uma faixa rala cercada de espaço vazio. A visão "Hoje" continua
+   em coluna única porque é a única com arrastar-para-reordenar
+   (dependente de posição vertical). */
+#list.modo-grid {
+  display: grid !important;
+  grid-template-columns: 1fr !important;
+  align-content: start !important;
+  gap: 8px !important;
+}
+@media (min-width: 640px) {
+  #list.modo-grid {
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)) !important;
+  }
+}
+@media (min-width: 1000px) {
+  #list.modo-grid {
+    grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)) !important;
+    gap: 10px !important;
+  }
+}
+/* O cabeçalho de data (um por dia, ex.: "🗓️ Segunda-feira, 8...") precisa
+   ocupar a largura inteira do grid, nunca virar "mais um card" na grade. */
+#list.modo-grid .historico-data-header {
+  grid-column: 1 / -1 !important;
 }
 
 ::-webkit-scrollbar {
@@ -689,10 +755,13 @@ select {
 #exportModalOverlay .modal-content,
 #confirmOverlay .modal-content,
 #modalEdicaoTarefaOverlay .modal-content,
-#lixeiraOverlay .modal-content,
 #moverDataOverlay .modal-content {
   position: static !important;
-  width: min(100%, 300px) !important;
+  /* Item 1 da auditoria: antes travado em 300px sempre — em janelas
+     grandes o modal ficava minúsculo no meio de uma tela enorme.
+     clamp() deixa o modal crescer com a janela até um teto confortável
+     de leitura, sem nunca estourar a viewport. */
+  width: clamp(240px, 34vw, 460px) !important;
   max-width: calc(100vw - 32px) !important;
   max-height: calc(100vh - 32px) !important;
   overflow-y: auto !important;
@@ -706,54 +775,25 @@ select {
   user-select: none !important;
 }
 
-/* #colorPanel é um dropdown de canto legado — não existe mais nenhum
-   elemento com esse id no HTML atual (os seletores de cor hoje moram
-   dentro do #modalOverlay), então a regra fica isolada aqui só para
-   não quebrar se ele voltar a ser usado. Não afeta nenhum modal ativo. */
-#colorPanel {
-  position: absolute;
-  top: 40px;
-  right: 10px;
-  width: 220px;
+/* A Lixeira tem lista rolável própria (item 2) — além de crescer em
+   largura como os demais modais, também cresce em altura conforme a
+   janela, em vez de ficar travada em 400px fixos mesmo numa janela
+   maximizada. */
+#lixeiraOverlay .modal-content {
+  position: static !important;
+  width: clamp(260px, 36vw, 480px) !important;
+  max-width: calc(100vw - 32px) !important;
+  height: clamp(320px, 60vh, 640px) !important;
+  max-height: calc(100vh - 32px) !important;
+  overflow-y: auto !important;
   background-color: var(--modal-bg) !important;
   color: var(--text-color) !important;
   border-radius: var(--radius-lg) !important;
   border: 1px solid var(--border-alpha) !important;
   box-shadow: var(--shadow-modal) !important;
-  padding: 12px !important;
+  padding: 16px !important;
   z-index: 20 !important;
   user-select: none !important;
-}
-#colorPanel.hidden {
-  display: none !important;
-}
-
-#colorPanelHeader {
-  display: flex !important;
-  justify-content: space-between !important;
-  align-items: center !important;
-  font-size: 12px !important;
-  font-weight: 600 !important;
-  color: var(--text-color, #333) !important;
-  margin-bottom: 8px !important;
-}
-
-#wheel {
-  display: block !important;
-  margin: 0 auto !important;
-  border-radius: 50% !important;
-  cursor: crosshair !important;
-}
-#wheelCursor {
-  position: absolute !important;
-  width: 10px !important;
-  height: 10px !important;
-  border: 2px solid var(--modal-bg, white) !important;
-  box-shadow: 0 0 2px var(--border-alpha, rgba(0, 0, 0, 0.6)) !important;
-  border-radius: 50% !important;
-  pointer-events: none !important;
-  transform: translate(-5px, -5px) !important;
-  display: none !important;
 }
 
 .slider-label {
@@ -762,46 +802,12 @@ select {
   display: block !important;
   margin: 8px 0 2px !important;
 }
-#brightnessSlider {
-  width: 100% !important;
-}
 
-#colorFields {
-  display: grid !important;
-  grid-template-columns: 30px 1fr !important;
-  gap: 4px 6px !important;
-  align-items: center !important;
-  margin-top: 8px !important;
-  font-size: 11px !important;
-  color: var(--sub-text-color, #555) !important;
-}
-
-#colorFields input,
-select,
-select option {
-  padding: 4px 6px !important;
-  border-radius: 5px !important;
-  font-size: 11px !important;
-  width: 100% !important;
-}
-
+/* Cor das opções do <select> nativo, herdada do tema — usada pelos
+   dropdowns reais da interface (filtro de visão, temas, texturas). */
 select option {
   background-color: var(--modal-bg) !important;
   color: var(--text-color) !important;
-}
-
-#presetRow {
-  display: flex !important;
-  justify-content: space-between !important;
-  margin-top: 10px !important;
-}
-.swatch {
-  width: 20px !important;
-  height: 20px !important;
-  border-radius: 50% !important;
-  border: 1px solid var(--border-alpha, rgba(0, 0, 0, 0.15)) !important;
-  cursor: pointer !important;
-  padding: 0 !important;
 }
 
 /* Botões de ação dentro dos modais (Paleta, Exportar, Confirmação).
@@ -901,6 +907,21 @@ select option {
 #closeModalX:hover,
 #closeExportModalX:hover {
   background: var(--bg-hover-alpha) !important;
+  color: var(--text-color) !important;
+}
+
+/* Regra central para todos os campos type="date" (seletor-data, período,
+   e o campo de destino do modal "Mover Tarefas"). Antes cada input repetia
+   sua própria aparência inline, com pequenas divergências entre si
+   (padding/raio ligeiramente diferentes) — agora é uma única fonte de
+   verdade, já usando os tokens de raio central (item 9/10 da auditoria). */
+.date-input {
+  padding: 3px 6px !important;
+  border-radius: var(--radius-sm) !important;
+  font-size: 11px !important;
+  font-family: inherit !important;
+  border: 1px solid var(--border-alpha) !important;
+  background: var(--input-bg-alpha) !important;
   color: var(--text-color) !important;
 }
 
@@ -1058,7 +1079,7 @@ input[type='date']::-webkit-calendar-picker-indicator:hover {
    ========================================== */
 .context-menu {
   position: fixed !important;
-  z-index: 300 !important;
+  z-index: 150 !important;
   background: var(--modal-bg) !important;
   border: 1px solid var(--border-alpha) !important;
   border-radius: var(--radius-md) !important;
@@ -1216,7 +1237,7 @@ input[type='date']::-webkit-calendar-picker-indicator:hover {
   /* Agora são 4 botões (Selecionar/Limpar/Mover/Apagar): 2x2 em grade
      fecha certinho, sem sobra de linha — por isso o "último ocupa 100%"
      que existia aqui antes (para 3 botões, ímpar) foi removido. */
-  .link-btn,
+  .link-btn:not(.selecao-bar-btn):not(.modal-fixed-btn),
   #resetBtn,
   #clearBtn,
   #moveBtn,
@@ -1240,26 +1261,17 @@ input[type='date']::-webkit-calendar-picker-indicator:hover {
   }
 }
 
-/* Janela larga: em vez de deixar cards e inputs esticarem até virar
-   uma única linha rala de 800px, o conteúdo central fica com uma
-   largura de leitura confortável e centralizada — o padrão usado em
-   apps "premium" de lista/tarefas. */
-@media (min-width: 600px) {
-  #content {
-    max-width: 560px !important;
-    margin: 0 auto !important;
-  }
-}
-
-/* A partir daqui a janela já está bem maior que o widget original
-   (agora pode inclusive ser maximizada — maximizable:true no main.js).
-   Sem isso, o conteúdo ficava "flutuando" numa faixa estreita centralizada
-   num mar de espaço vazio; aqui os cards, textos e área de leitura
-   crescem junto, na proporção certa, em vez de só alargar a margem. */
+/* Janela larga: a largura máxima de #content agora já é fluida via
+   clamp() na regra base (ver acima) — sem "degraus" de max-width fixo
+   que deixavam sobras de espaço vazio visíveis logo antes de cada
+   salto. Os cards da visão "Hoje" (coluna única, sem grid) e a
+   tipografia continuam crescendo um pouco a partir daqui, já que a
+   janela está bem maior que o widget original (agora pode inclusive
+   ser maximizada — maximizable:true no main.js). As visões com vários
+   dias (Semana/Mês/Ano/Período) já ganham colunas extras via
+   #list.modo-grid, então o espaço extra vira MAIS cards lado a lado em
+   vez de só texto mais largo. */
 @media (min-width: 900px) {
-  #content {
-    max-width: 720px !important;
-  }
   .item {
     padding: 13px 16px !important;
   }
@@ -1273,11 +1285,5 @@ input[type='date']::-webkit-calendar-picker-indicator:hover {
     width: 32px !important;
     height: 32px !important;
     font-size: 15px !important;
-  }
-}
-
-@media (min-width: 1200px) {
-  #content {
-    max-width: 820px !important;
   }
 }
