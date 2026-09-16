@@ -256,10 +256,19 @@ function setupConfirmModalEvents() {
   }
 }
 
-function abrirCaixaConfirmacaoCustomizada(mensagem, acaoAprovada) {
+// Item 1: "Sim" era SEMPRE vermelho (mesma cor de "Excluir"), mesmo para
+// confirmações benignas como Mover/Restaurar. Agora só fica vermelho quando
+// a chamada explicitamente marca a ação como destrutiva.
+function abrirCaixaConfirmacaoCustomizada(
+  mensagem,
+  acaoAprovada,
+  tipo = 'padrao'
+) {
   const msgEl = document.getElementById('confirmMessage');
   if (msgEl) msgEl.textContent = mensagem;
   acaoConfirmacaoPendente = acaoAprovada;
+  const btnYes = document.getElementById('confirmYes');
+  if (btnYes) btnYes.classList.toggle('confirm-destrutivo', tipo === 'destrutivo');
   const overlay = document.getElementById('confirmOverlay');
   if (overlay) {
     overlay.classList.remove('hidden');
@@ -535,13 +544,17 @@ function render() {
   chavesParaRenderizar.sort().forEach((chaveData) => {
     if (!bancoDadosGeral[chaveData] || !bancoDadosGeral[chaveData].items)
       return;
-    // Corrige item 4: tarefas concluídas descem para depois das pendentes,
-    // sempre abaixo da última concluída. O sort é estável (garantido pelo
-    // motor JS do Electron), então a ordem dentro de cada grupo — pendentes
-    // entre si, concluídas entre si — não muda, só o agrupamento.
+    // Item 3: concluídas vão para baixo das pendentes e ficam ordenadas
+    // pela HORA REAL em que cada uma foi concluída (ordemConclusao),
+    // sempre abaixo da última — não pela ordem de criação/arraste, que é
+    // o que um sort só por "done" (estável) dava antes.
     const ativos = bancoDadosGeral[chaveData].items
       .filter((i) => !i.excluida)
-      .sort((a, b) => (a.done === b.done ? 0 : a.done ? 1 : -1));
+      .sort((a, b) => {
+        if (a.done !== b.done) return a.done ? 1 : -1;
+        if (a.done) return (a.ordemConclusao || 0) - (b.ordemConclusao || 0);
+        return 0; // pendentes: mantém a ordem manual (drag-and-drop)
+      });
     if (ativos.length === 0) return;
 
     // No filtro "Hoje" a data já aparece em #dateLabel, logo acima da
@@ -613,6 +626,13 @@ function render() {
       cb.checked = item.done;
       cb.addEventListener('change', () => {
         bancoDadosGeral[chaveData].items[idxReal].done = cb.checked;
+        // Item 3: registra QUANDO foi concluída, para ordenar pela ordem
+        // real de conclusão (abaixo da última). Ao desmarcar, volta pra
+        // pendentes e perde essa marca — se concluir de novo, vai para o
+        // fim da fila de concluídas novamente.
+        bancoDadosGeral[chaveData].items[idxReal].ordemConclusao = cb.checked
+          ? Date.now()
+          : null;
         // A seleção para mover é independente do status de conclusão —
         // marcar/desmarcar "concluída" nunca altera o que está selecionado
         // para o Modo Movimentação.
@@ -670,7 +690,8 @@ function render() {
             itensSelecionadosTransporte.delete(chaveData + '|' + idxReal);
             persist();
             render();
-          }
+          },
+          'destrutivo'
         );
       });
 
@@ -742,6 +763,19 @@ function render() {
         );
       });
       novaLista.insertBefore(draggingItem, nextSibling);
+
+      // Item 2: Auto Scroll — ao aproximar o card arrastado do topo ou do
+      // final da lista, ela rola sozinha (igual Trello/Jira/Notion). Não
+      // mexe em nada do reordenamento acima, só soma um scroll quando o
+      // ponteiro entra na faixa de 40px junto às bordas.
+      const limiteScroll = novaLista.getBoundingClientRect();
+      const margemAutoScroll = 40;
+      const velocidadeAutoScroll = 14;
+      if (e.clientY < limiteScroll.top + margemAutoScroll) {
+        novaLista.scrollTop -= velocidadeAutoScroll;
+      } else if (e.clientY > limiteScroll.bottom - margemAutoScroll) {
+        novaLista.scrollTop += velocidadeAutoScroll;
+      }
     });
 
     novaLista.addEventListener('drop', async (e) => {
@@ -893,7 +927,8 @@ function setupChecklistControls() {
           });
           persist();
           render();
-        }
+        },
+        'destrutivo'
       );
     });
   }
@@ -925,7 +960,8 @@ function setupChecklistControls() {
           });
           persist();
           render();
-        }
+        },
+        'destrutivo'
       );
     });
   }
@@ -1945,12 +1981,14 @@ function setupTransporte() {
   // filtros, progresso ou status da tarefa.
   if (chkSelecionarTodasTransporte) {
     chkSelecionarTodasTransporte.addEventListener('change', () => {
+      const visiveis = obterChavesTransportaveisVisiveis();
       if (chkSelecionarTodasTransporte.checked) {
-        obterChavesTransportaveisVisiveis().forEach((chave) =>
-          itensSelecionadosTransporte.add(chave)
-        );
+        visiveis.forEach((chave) => itensSelecionadosTransporte.add(chave));
       } else {
-        itensSelecionadosTransporte.clear();
+        // Item 5/6: desmarcar "selecionar todas" removia TODA a seleção
+        // (.clear()), inclusive tarefas de outras datas fora do filtro
+        // atual. Agora só desmarca o que está visível aqui.
+        visiveis.forEach((chave) => itensSelecionadosTransporte.delete(chave));
       }
       render();
     });
@@ -2276,7 +2314,13 @@ function setupLixeira() {
           lixeiraSelecionados.add(chaveData + '|' + idx)
         );
       } else {
-        lixeiraSelecionados.clear();
+        // Item 5/6: desmarcar "selecionar tudo" limpava a seleção INTEIRA,
+        // apagando tarefas marcadas em outras datas (fora do filtro atual)
+        // e quebrando a restauração em lote entre datas diferentes. Agora
+        // só desmarca o que está visível no filtro de data ativo.
+        visiveis.forEach(({ chaveData, idx }) =>
+          lixeiraSelecionados.delete(chaveData + '|' + idx)
+        );
       }
       renderLixeira();
     });

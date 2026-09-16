@@ -864,8 +864,7 @@ select option {
 /* Secundários: fundo na cor secundária derivada da paleta (antes era
    --input-bg-alpha, pensado para campos de formulário, não para botão —
    agora tem um papel próprio, distinto da cor principal). */
-#btnExportarCSV,
-#confirmNo {
+#btnExportarCSV {
   border: 1px solid var(--border-alpha) !important;
   background-color: var(--palette-secundaria, var(--input-bg-alpha)) !important;
   color: var(--text-color) !important;
@@ -888,15 +887,58 @@ select option {
   opacity: 1 !important;
 }
 
-/* Destrutivo: única cor fixa da interface (fora do tema), reservada
-   para a ação irreversível de excluir */
-#confirmYes {
+/* Item 1 — Cores de ação padronizadas (fixas, não dependem da paleta do
+   dia): antes "Sim" era sempre vermelho e "Não" herdava a cor de destaque
+   do tema (podia sair verde conforme a paleta escolhida), trocando os
+   dois sentidos. Regra única daqui pra frente, em todo o sistema:
+   verde = confirmar/positivo, cinza = cancelar/neutro,
+   vermelho = destrutivo (só quando marcado explicitamente). */
+#confirmNo {
+  border: 1px solid var(--border-alpha) !important;
+  background-color: var(--bg-alpha) !important;
+  color: var(--text-color) !important;
+  font-weight: 500 !important;
+}
+#confirmYes,
+#btnMoverSelecionadas,
+#btnMoverContinuar,
+#btnLixeiraRestaurarSelecionadas,
+#btnLixeiraRestaurarTodas {
   border: none !important;
-  background-color: #b91c1c !important;
+  background-color: #15803d !important;
   color: #ffffff !important;
 }
-#confirmYes:hover {
-  opacity: 0.9 !important;
+#confirmYes:hover,
+#btnMoverSelecionadas:hover,
+#btnMoverContinuar:hover,
+#btnLixeiraRestaurarSelecionadas:hover,
+#btnLixeiraRestaurarTodas:hover {
+  background-color: #166534 !important;
+}
+.lixeira-restore-day-btn,
+.lixeira-restore-btn {
+  color: #15803d !important;
+  border-color: rgba(21, 128, 61, 0.35) !important;
+}
+.lixeira-restore-day-btn:hover,
+.lixeira-restore-btn:hover {
+  background: rgba(21, 128, 61, 0.12) !important;
+}
+/* Destrutivo: só entra quando abrirCaixaConfirmacaoCustomizada() passa
+   'destrutivo' (Excluir tarefa, Apagar concluídas, Apagar Tudo). */
+#confirmYes.confirm-destrutivo {
+  background-color: #b91c1c !important;
+}
+#confirmYes.confirm-destrutivo:hover {
+  background-color: #991b1b !important;
+}
+#clearBtn {
+  color: #b91c1c !important;
+  border-color: rgba(185, 28, 28, 0.35) !important;
+  font-weight: 600 !important;
+}
+#clearBtn:hover {
+  background: rgba(185, 28, 28, 0.1) !important;
 }
 
 /* Botões "X" de fechar modal — mesma identidade dos ícones da titlebar */
@@ -1084,17 +1126,9 @@ input[type='date']::-webkit-calendar-picker-indicator:hover {
   padding: 3px 10px !important;
   font-size: 10px !important;
 }
-#btnMoverSelecionadas {
-  background-color: var(--palette-accent, var(--text-color)) !important;
-  color: var(--palette-accent-text, var(--modal-bg)) !important;
-  border-color: transparent !important;
-}
-#btnMoverSelecionadas:hover {
-  background-color: var(
-    --palette-accent-hover,
-    var(--palette-accent)
-  ) !important;
-}
+/* Cor fixa verde de #btnMoverSelecionadas definida junto às demais cores
+   de ação (item 1), perto de #confirmYes — evita ficar dependente da
+   paleta do dia como antes. */
 
 /* Item em modo-seleção: o checkbox extra de "selecionar para mover" fica
    numa linha própria ABAIXO de todo o conteúdo do card (título,
